@@ -73,44 +73,52 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> N
     min_y_px = max(min_y_px, 0)
     max_y_px = min(max_y_px, fb.backbuffer.height)
 
+    n_samples_per_axis: int = 8
+    n_samples: int = n_samples_per_axis ** 2
+
     for v_px in range(int(min_y_px), int(max_y_px)):
         for u_px in range(int(min_x_px), int(max_x_px)):
-            u_sample: float = (u_px + 0.5)
-            v_sample: float = (v_px + 0.5)
-            uv: Vec4 = Vec4(u_sample, v_sample, 0.0, 1.0)
+            final_color: Vec4 = Vec4(0.0, 0.0, 0.0, 0.0)
+            final_depth: float = 0
+            for sample in range(0, n_samples):
+                u_sample_offset: float = ((sample % n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
+                v_sample_offset: float = ((sample // n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
+                u_sample: float = (u_px + u_sample_offset)
+                v_sample: float = (v_px + v_sample_offset)
+                uv: Vec4 = Vec4(u_sample, v_sample, 0.0, 1.0)
 
-            v4: Vec4 = subtract(uv, p1.transform)
-            v5: Vec4 = subtract(uv, p2.transform)
+                v4: Vec4 = subtract(uv, p1.transform)
+                v5: Vec4 = subtract(uv, p2.transform)
 
-            w3: float = ((v1.x * v4.y) - (v1.y * v4.x)) / det
-            w1: float = ((v2.x * v5.y) - (v2.y * v5.x)) / det
-            w2: float = 1.0 - w1 - w3
+                w3: float = ((v1.x * v4.y) - (v1.y * v4.x)) / det
+                w1: float = ((v2.x * v5.y) - (v2.y * v5.x)) / det
+                w2: float = 1.0 - w1 - w3
 
-            if (w1 >= 0.0 and w2 >= 0.0 and w3 >= 0.0):
-                # fixing the weights for perspective-correct interpolation / for brevity
-                w1 /= p1.transform.w
-                w2 /= p2.transform.w
-                w3 /= p3.transform.w
-                # note that .transform.w is actually original_z 
-                px_depth: float = 1.0 / (w1 + w2 + w3)
-                if (px_depth < fb.depth_buffer.data[v_px * fb.depth_buffer.width + u_px]):
-                    t1: Vec4 = scale(p1.texture_uv, w1)
-                    t2: Vec4 = scale(p2.texture_uv, w2)
-                    t3: Vec4 = scale(p3.texture_uv, w3)
-                    tuv: Vec4 = scale(add(add(t1, t2), t3), px_depth)
+                color_written: bool = False
+                if (w1 >= 0.0 and w2 >= 0.0 and w3 >= 0.0):
+                    # fixing the weights for perspective-correct interpolation / for brevity
+                    w1 /= p1.transform.w
+                    w2 /= p2.transform.w
+                    w3 /= p3.transform.w
+                    px_depth: float = 1.0 / (w1 + w2 + w3)
+                    depth_buffer_index: int = n_samples * (v_px * fb.depth_buffer.width + u_px) + sample
+                    if (px_depth < fb.depth_buffer.data[depth_buffer_index]):
+                        t1: Vec4 = scale(p1.texture_uv, w1)
+                        t2: Vec4 = scale(p2.texture_uv, w2)
+                        t3: Vec4 = scale(p3.texture_uv, w3)
+                        tuv: Vec4 = scale(add(add(t1, t2), t3), px_depth)
                     
-                    tex_index: int = (int(tuv.y * fb.texture.height) * fb.texture.width) + int(tuv.x * fb.texture.width)
-                    texture_color: Vec4 = fb.texture.data[tex_index]
-                    
-                    c1: Vec4 = scale(p1.color, w1)
-                    c2: Vec4 = scale(p2.color, w2)
-                    c3: Vec4 = scale(p3.color, w3)
-                    color: Vec4 = scale(add(add(c1, c2), c3), px_depth)
+                        tex_index: int = (int(tuv.y * fb.texture.height) * fb.texture.width) + int(tuv.x * fb.texture.width)
+                        texture_color: Vec4 = fb.texture.data[tex_index]
 
-                    final_color: Vec4 = add(scale(color, color.w), scale(texture_color, 1.0 - color.w))
-                    
-                    fb.backbuffer.data[v_px * fb.backbuffer.width + u_px] = texture_color 
-                    fb.depth_buffer.data[v_px * fb.depth_buffer.width + u_px] = px_depth
+                        color_written = True
+                        final_color = add(final_color, texture_color)
+                        fb.depth_buffer.data[depth_buffer_index] = px_depth
+                        
+                if (not color_written):
+                    final_color = add(final_color, fb.backbuffer.data[v_px * fb.backbuffer.width + u_px])
+                        
+            fb.backbuffer.data[v_px * fb.backbuffer.width + u_px] = scale(final_color, 1/(n_samples))
     
     print("Rasterized a triangle")
 
@@ -187,7 +195,7 @@ def main() -> None:
     backbuffer = Buffer([Vec4(1.0, 1.0, 1.0, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT)],
                         WINDOW_WIDTH, WINDOW_HEIGHT)
 
-    depth_buffer = Buffer([999999.0 for x in range(WINDOW_WIDTH * WINDOW_HEIGHT)],
+    depth_buffer = Buffer([999999.0 for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (8 ** 2))],
                           WINDOW_WIDTH, WINDOW_HEIGHT)
 
     framebuffer: Framebuffer = Framebuffer(backbuffer, depth_buffer, texture)
