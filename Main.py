@@ -90,14 +90,11 @@ def multiply(mat: Mat4, vec: Vec4) -> Vec4:
     return Vec4(*[dot(row, vec) for row in mat])
 
 
-def is_covered_edge(p1: Vec4, p2: Vec4) -> bool:
-    dx: float = p2.x - p1.x
-    dy: float = p2.y - p1.y
-
-    if (dy < 0):
+def is_covered_edge(edge: Vec4) -> bool:
+    if (edge.y > 0):
         return True
 
-    if (dx > 0 and dy == 0):
+    if (edge.x < 0 and edge.y == 0):
         return True
 
     return False
@@ -112,6 +109,9 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float)
     accumulated_w1: float = 0
     accumulated_w3: float = 0
 
+    saved_w1: float = w1
+    saved_w3: float = w3
+
     w1 += w1_step.x * (1 / (n_samples_per_axis * 2))
     w3 += w3_step.x * (1 / (n_samples_per_axis * 2))
     w1 += w1_step.y * (1 / (n_samples_per_axis * 2))
@@ -125,14 +125,11 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float)
         row_w3: float = w3
 
         for u_sample in range(0, n_samples_per_axis):
+            w1 = saved_w1 + (w1_step.y * v_sample/n_samples_per_axis) + \
+                (w1_step.x * u_sample/n_samples_per_axis)
+            w3 = saved_w3 + (w3_step.y * v_sample/n_samples_per_axis) + \
+                (w3_step.x * u_sample/n_samples_per_axis)
             w2: float = 1.0 - w1 - w3
-
-            if (math.fabs(w1) < math.fabs(w1_bias) and w1_bias != 0):
-                tint = 0.0
-            if (math.fabs(w2) < math.fabs(w2_bias) and w2_bias != 0):
-                tint = 0.0
-            if (math.fabs(w3) < math.fabs(w3_bias) and w3_bias != 0):
-                tint = 0.0
 
             if (w1 <= w1_bias or w2 <= w2_bias or w3 <= w3_bias):
                 continue
@@ -216,21 +213,19 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     p1 = Vertex(p1.transform, p1.texture_uv * (1/p1.transform.w))
     p2 = Vertex(p2.transform, p2.texture_uv * (1/p2.transform.w))
     p3 = Vertex(p3.transform, p3.texture_uv * (1/p3.transform.w))
-    print(p1.transform.y)
-    print(p2.transform.y)
-    print(p3.transform.y)
+
+    edge1: Vec4 = p2.transform - p1.transform
+    edge2: Vec4 = p3.transform - p2.transform
+    edge3: Vec4 = p1.transform - p3.transform
 
     w1_bias: float = - \
-        0.01 if is_covered_edge(p2.transform, p3.transform) else 0
+        0.00001 if is_covered_edge(edge1) else 0
     w2_bias: float = - \
-        0.01 if is_covered_edge(p3.transform, p1.transform) else 0
+        0.00001 if is_covered_edge(edge2) else 0
     w3_bias: float = - \
-        0.01 if is_covered_edge(p1.transform, p2.transform) else 0
+        0.00001 if is_covered_edge(edge3) else 0
 
-    v1: Vec4 = p2.transform - p1.transform
-    v2: Vec4 = p3.transform - p2.transform
-
-    det: float = (v1.x * v2.y) - (v1.y * v2.x)
+    det: float = (edge1.x * edge2.y) - (edge1.y * edge2.x)
     if (det < 0.0000001):  # completely magic number
         return False
 
@@ -248,15 +243,16 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     min_y_px = max(min_y_px, 0)
     max_y_px = min(max_y_px, fb.backbuffer.height)
 
-    w1_step: Vec2 = Vec2(-v2.y / det, v2.x / det)
-    w3_step: Vec2 = Vec2(-v1.y / det, v1.x / det)
+    w1_step: Vec2 = Vec2(-edge2.y / det, edge2.x / det)
+    w3_step: Vec2 = Vec2(-edge1.y / det, edge1.x / det)
 
     initial_uv: Vec4 = Vec4(min_x_px, min_y_px, 0, 1)
+
     v4: Vec4 = initial_uv - p1.transform
     v5: Vec4 = initial_uv - p2.transform
 
-    w1: float = ((v2.x * v5.y) - (v2.y * v5.x)) / det
-    w3: float = ((v1.x * v4.y) - (v1.y * v4.x)) / det
+    w1: float = ((edge2.x * v5.y) - (edge2.y * v5.x)) / det
+    w3: float = ((edge1.x * v4.y) - (edge1.y * v4.x)) / det
 
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, w1_step, w3_step, w1_bias, w2_bias, w3_bias)
@@ -396,7 +392,6 @@ def quantize_color(color: Vec4, level: int) -> Vec4:
 def present_backbuffer(backbuffer: Buffer) -> None:
     pen_color: Vec4 = Vec4(0.0, 0.0, 0.0, 1.0)
     turtle.pencolor(pen_color.x, pen_color.y, pen_color.z)
-    times_went_forward: int = 0
     start_time = time.time()
     for y_px in range(0, WINDOW_HEIGHT):
         turtle.up()
@@ -412,7 +407,6 @@ def present_backbuffer(backbuffer: Buffer) -> None:
             color_changed: bool = px_color != pen_color
 
             if (color_changed):
-                times_went_forward += 1
                 turtle.forward(accumulated_pixels)
                 pen_color = px_color
                 turtle.pencolor(pen_color.x, pen_color.y, pen_color.z)
@@ -519,12 +513,14 @@ def main() -> None:
 
         triangle_was_rasterized: bool = rasterize_triangle(
             framebuffer, p1, p2, p3)
-        resolve_buffer(framebuffer.backbuffer)
-        present_backbuffer(framebuffer.backbuffer)
         if triangle_was_rasterized:
             n_triangles_rasterized += 1
+
         if (n_triangles_rasterized % 500 == 0):
             print(n_triangles_rasterized, "triangles were rasterized")
+
+    resolve_buffer(framebuffer.backbuffer)
+    present_backbuffer(framebuffer.backbuffer)
 
     print(n_triangles_rasterized, "triangles were rasterized")
 
