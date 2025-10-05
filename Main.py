@@ -3,7 +3,6 @@ import math
 import time
 from typing import NamedTuple
 
-
 WINDOW_WIDTH: int = 1920//2
 WINDOW_HEIGHT: int = 1080//2
 
@@ -13,6 +12,29 @@ class Vec4(NamedTuple):
     y: float
     z: float
     w: float
+
+    def __add__(self, other):
+        return Vec4(*[a + b for a, b in zip(self, other)])
+
+    def __sub__(self, other):
+        return Vec4(*[a - b for a, b in zip(self, other)])
+
+    def __mul__(self, factor):
+        return Vec4(*[a * factor for a in self])
+
+
+class Vec2(NamedTuple):
+    x: float
+    y: float
+
+    def __add__(self, other):
+        return Vec2(*[a + b for a, b in zip(self, other)])
+
+    def __sub__(self, other):
+        return Vec2(*[a - b for a, b in zip(self, other)])
+
+    def __mul__(self, factor):
+        return Vec2(*[a * factor for a in self])
 
 
 class Buffer(NamedTuple):
@@ -36,20 +58,17 @@ class Mat4(NamedTuple):
 
 class Vertex(NamedTuple):
     transform: Vec4
-    color: Vec4
-    texture_uv: Vec4
+    texture_uv: Vec2
 
 
-def subtract(v1: Vec4, v2: Vec4) -> Vec4:
-    return Vec4(*[a - b for a, b in zip(v1, v2)])
-
-
-def add(v1: Vec4, v2: Vec4) -> Vec4:
-    return Vec4(*[a + b for a, b in zip(v1, v2)])
-
-
-def scale(v1: Vec4, factor: float) -> Vec4:
-    return Vec4(*[e * factor for e in v1])
+class RasterCtx(NamedTuple):
+    fb: Framebuffer
+    p1: Vertex
+    p2: Vertex
+    p3: Vertex
+    n_samples_per_axis: int
+    w1_step: Vec2
+    w3_step: Vec2
 
 
 def dot(v1: Vec4, v2: Vec4) -> float:
@@ -63,12 +82,70 @@ def multiply(mat: Mat4, vec: Vec4) -> Vec4:
     return Vec4(*[dot(row, vec) for row in mat])
 
 
+def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) -> None:
+    fb, p1, p2, p3, n_samples_per_axis, *_ = ctx
+    n_samples: int = n_samples_per_axis ** 2
+    accumulated_color: Vec4 = Vec4(0.0, 0.0, 0.0, 0.0)
+    n_samples_survived: int = 0
+    for sample in range(0, n_samples):
+
+        u_sample_offset: float = (
+            (sample % n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
+        v_sample_offset: float = (
+            (sample // n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
+        u_sample: float = (u_px + u_sample_offset)
+        v_sample: float = (v_px + v_sample_offset)
+        uv: Vec4 = Vec2(u_sample, v_sample)
+
+        w2: float = 1.0 - w1 - w3
+
+        if (w1 < 0 or w2 < 0 or w3 < 0):
+            continue
+
+        px_depth: float = 1.0 / (w1/p1.transform.w +
+                                 w2/p2.transform.w + w3/p3.transform.w)
+        depth_buffer_index: int = n_samples * \
+            (v_px * fb.depth_buffer.width + u_px) + sample
+
+        if (px_depth > fb.depth_buffer.data[depth_buffer_index]):
+            continue
+
+        # point attributes are pre-divided by their respective depths
+        t1: Vec4 = p1.texture_uv * w1
+        t2: Vec4 = p2.texture_uv * w2
+        t3: Vec4 = p3.texture_uv * w3
+        tuv: Vec4 = (t1 + t2 + t3) * px_depth
+
+        tex_max_index: int = (fb.texture.height * fb.texture.width) - 1
+        tex_index: int = (
+            int(tuv.y * fb.texture.height) * fb.texture.width) + int(tuv.x * fb.texture.width)
+
+        tex_index = max(min(tex_index, tex_max_index), 0)
+
+        texture_color: Vec4 = fb.texture.data[tex_index]
+
+        accumulated_color = accumulated_color + texture_color
+        n_samples_survived += 1
+        fb.depth_buffer.data[depth_buffer_index] = px_depth
+
+    if (n_samples_survived <= 0):
+        return
+
+    fb.backbuffer.data[v_px * fb.backbuffer.width +
+                       u_px] = accumulated_color * (1/n_samples_survived)
+
+
 def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> None:
-    v1: Vec4 = subtract(p2.transform, p1.transform)
-    v2: Vec4 = subtract(p3.transform, p2.transform)
+    # pre-dividing so inner loop isnt calculating this a ton for no reason
+    p1 = Vertex(p1.transform, p1.texture_uv * (1/p1.transform.w))
+    p2 = Vertex(p2.transform, p2.texture_uv * (1/p2.transform.w))
+    p3 = Vertex(p3.transform, p3.texture_uv * (1/p3.transform.w))
+
+    v1: Vec4 = p2.transform - p1.transform
+    v2: Vec4 = p3.transform - p2.transform
 
     det: float = (v1.x * v2.y) - (v1.y * v2.x)
-    if (abs(det) < 0.0000001):  # completely magic number
+    if (det < 0.0000001):  # completely magic number
         return
 
     min_x_px: float = min(min(p1.transform.x, p2.transform.x), p3.transform.x)
@@ -81,66 +158,31 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> N
     min_y_px = max(min_y_px, 0)
     max_y_px = min(max_y_px, fb.backbuffer.height)
 
-    n_samples_per_axis: int = 2
-    n_samples: int = n_samples_per_axis ** 2
+    n_samples_per_axis: int = 1
+
+    w1_step: Vec2 = Vec2(-v2.y / det, v2.x / det)
+    w3_step: Vec2 = Vec2(-v1.y / det, v1.x / det)
+
+    initial_uv: Vec4 = Vec4(min_x_px, min_y_px, 0, 1)
+    v4: Vec4 = initial_uv - p1.transform
+    v5: Vec4 = initial_uv - p2.transform
+
+    w1: float = ((v2.x * v5.y) - (v2.y * v5.x)) / det
+    w3: float = ((v1.x * v4.y) - (v1.y * v4.x)) / det
+
+    ctx: RasterCtx = RasterCtx(
+        fb, p1, p2, p3, n_samples_per_axis, w1_step, w3_step)
 
     for v_px in range(int(min_y_px), int(max_y_px)):
+        row_w1: float = w1
+        row_w3: float = w3
         for u_px in range(int(min_x_px), int(max_x_px)):
-            final_color: Vec4 = Vec4(0.0, 0.0, 0.0, 0.0)
-            px_color = add(
-                final_color, fb.backbuffer.data[v_px * fb.backbuffer.width + u_px])
-            for sample in range(0, n_samples):
+            shade_pixel(ctx, u_px, v_px, w1, w3)
 
-                u_sample_offset: float = (
-                    (sample % n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
-                v_sample_offset: float = (
-                    (sample // n_samples_per_axis) / n_samples_per_axis) + (1 / (n_samples_per_axis * 2))
-                u_sample: float = (u_px + u_sample_offset)
-                v_sample: float = (v_px + v_sample_offset)
-                uv: Vec4 = Vec4(u_sample, v_sample, 0.0, 1.0)
-
-                v4: Vec4 = subtract(uv, p1.transform)
-                v5: Vec4 = subtract(uv, p2.transform)
-
-                w3: float = ((v1.x * v4.y) - (v1.y * v4.x)) / det
-                w1: float = ((v2.x * v5.y) - (v2.y * v5.x)) / det
-                w2: float = 1.0 - w1 - w3
-
-                color_written: bool = False
-                if (w1 < 0 or w2 < 0 or w3 < 0):
-                    final_color = add(final_color, px_color)
-                    continue
-
-                # fixing the weights for perspective-correct interpolation / for brevity
-                w1 /= p1.transform.w
-                w2 /= p2.transform.w
-                w3 /= p3.transform.w
-                px_depth: float = 1.0 / (w1 + w2 + w3)
-                depth_buffer_index: int = n_samples * \
-                    (v_px * fb.depth_buffer.width + u_px) + sample
-
-                if (px_depth > fb.depth_buffer.data[depth_buffer_index]):
-                    final_color = add(final_color, px_color)
-                    continue
-
-                t1: Vec4 = scale(p1.texture_uv, w1)
-                t2: Vec4 = scale(p2.texture_uv, w2)
-                t3: Vec4 = scale(p3.texture_uv, w3)
-                tuv: Vec4 = scale(add(add(t1, t2), t3), px_depth)
-
-                tex_index: int = (
-                    int(tuv.y * fb.texture.height) * fb.texture.width) + int(tuv.x * fb.texture.width)
-                texture_color: Vec4 = fb.texture.data[tex_index]
-
-                color_written = True
-                final_color = add(final_color, texture_color)
-                fb.depth_buffer.data[depth_buffer_index] = px_depth
-
-                if (not color_written):
-                    final_color = add(final_color, px_color)
-
-            fb.backbuffer.data[v_px * fb.backbuffer.width +
-                               u_px] = scale(final_color, 1/(n_samples))
+            w1 += w1_step.x
+            w3 += w3_step.x
+        w3 = row_w3 + w3_step.y
+        w1 = row_w1 + w1_step.y
 
     print("Rasterized a triangle")
 
@@ -152,7 +194,7 @@ def perspective_divide(vec: Vec4) -> Vec4:
     return Vec4(vec.x / vec.w, vec.y / vec.w, vec.z / vec.w, vec.w)
 
 
-def read_bmp(path: str) -> Buffer:
+def load_bmp(path: str) -> Buffer:
     with open(path, 'rb') as bmp:
         loaded_bmp: bytes = bmp.read()
 
@@ -214,6 +256,43 @@ def read_bmp(path: str) -> Buffer:
         return Buffer(pixels, width, height)
 
 
+def load_obj(path: str) -> (list[Vec4], list[Vec2]):
+    unique_transforms: list[Vec4] = []
+    unique_tex_uvs: list[Vec2] = []
+
+    transforms: list[Vec4] = []
+    tex_uvs: list[Vec2] = []
+    with open(path) as obj:
+        for line in obj:
+            items: [str] = line.strip().split()
+            if (len(items) == 0):
+                continue
+
+            id: str = items[0]
+
+            if (id == '#'):
+                continue
+            elif (id == 'v'):
+                transform: Vec4 = Vec4(float(items[1]), float(
+                    items[2]), float(items[3]) + 5, 1.0)
+                unique_transforms.append(transform)
+            elif (id == 'vt'):
+                tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
+                unique_tex_uvs.append(tex_uv)
+            elif (id == "f"):
+                atribs: list[list[int]] = [
+                    [int(attribute_index) - 1 for attribute_index in vertex.split("/")] for vertex in items[1:]]
+                transforms.append(unique_transforms[atribs[2][0]])
+                transforms.append(unique_transforms[atribs[1][0]])
+                transforms.append(unique_transforms[atribs[0][0]])
+
+                tex_uvs.append(unique_tex_uvs[atribs[2][1]])
+                tex_uvs.append(unique_tex_uvs[atribs[1][1]])
+                tex_uvs.append(unique_tex_uvs[atribs[0][1]])
+
+    return (transforms, tex_uvs)
+
+
 def viewport_transform(ndc: Vec4, width: int, height: int) -> Vec4:
     x_px: float = ((ndc.x + 1.0) / 2.0) * width
     y_px: float = ((ndc.y + 1.0) / 2.0) * height
@@ -225,64 +304,10 @@ def quantize_color(color: Vec4, level: int) -> Vec4:
         round(color.x * (level - 1)) / (level - 1), round(color.y * (level - 1)) / (level - 1), round(color.z * (level - 1)) / (level - 1), 1.0)
 
 
-def main() -> None:
-    texture = read_bmp("test.bmp")
-
-    backbuffer = Buffer([Vec4(1.0, 1.0, 1.0, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT)],
-                        WINDOW_WIDTH, WINDOW_HEIGHT)
-
-    depth_buffer = Buffer([999999.0 for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (2 ** 2))],
-                          WINDOW_WIDTH, WINDOW_HEIGHT)
-
-    framebuffer: Framebuffer = Framebuffer(backbuffer, depth_buffer, texture)
-
-    transforms: list[Vec4] = [
-        Vec4(-2, -2, 10.0, 1.0), Vec4(2, -2, 10.0, 1.0), Vec4(-2, 2, 20.0, 1.0),
-        Vec4(2, -2, 10, 1.0), Vec4(2, 2, 20.0, 1.0), Vec4(-2, 2, 20.0, 1.0),]
-    texture_uvs: list[Vec4] = [
-        Vec4(0, 0, 0, 0), Vec4(1, 0, 0, 0), Vec4(0, 1, 0, 0),
-        Vec4(1, 0, 0, 0), Vec4(1, 1, 0, 0), Vec4(0, 1, 0, 0)]
-    colors: list[Vec4] = [
-        Vec4(1.0, 0.0, 0.0, 0.5), Vec4(
-            0.0, 1.0, 0.0, 0.5), Vec4(0.0, 0.0, 1.0, 0.5),
-        Vec4(0.0, 1.0, 0.0, 0.5), Vec4(0.0, 0.0, 0.0, 0.0), Vec4(0.0, 0.0, 1.0, 0.5)]
-
-    far_plane: float = 100
-    near_plane: float = 0.001
-    fov: float = math.radians(90/2)
-    ar: float = WINDOW_WIDTH / WINDOW_HEIGHT
-    projection_matrix: Mat4 = Mat4(
-        Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
-        Vec4(0, 1/math.tan(fov/2), 0, 0),
-        Vec4(0, 0, far_plane/(far_plane - near_plane), -
-             (far_plane * near_plane)/(far_plane - near_plane)),
-        Vec4(0, 0, 1, 0))
-
-    for i in range(0, len(transforms)):
-        transforms[i] = multiply(projection_matrix, transforms[i])
-        transforms[i] = perspective_divide(transforms[i])
-        transforms[i] = viewport_transform(
-            transforms[i], WINDOW_WIDTH, WINDOW_HEIGHT)
-
-    p1: Vertex = Vertex(transforms[0], colors[0], texture_uvs[0])
-    p2: Vertex = Vertex(transforms[1], colors[1], texture_uvs[1])
-    p3: Vertex = Vertex(transforms[2], colors[2], texture_uvs[2])
-
-    p4: Vertex = Vertex(transforms[3], colors[3], texture_uvs[3])
-    p5: Vertex = Vertex(transforms[4], colors[4], texture_uvs[4])
-    p6: Vertex = Vertex(transforms[5], colors[5], texture_uvs[5])
-
-    rasterize_triangle(framebuffer, p1, p2, p3)
-    rasterize_triangle(framebuffer, p4, p5, p6)
-
-    turtle.setup(width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
-    turtle.setworldcoordinates(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1)
-
-    turtle.tracer(0, 0)
-    turtle.pensize(1)
-
+def present_backbuffer(backbuffer: Buffer) -> None:
     pen_color: Vec4 = Vec4(0.0, 0.0, 0.0, 1.0)
     turtle.pencolor(pen_color.x, pen_color.y, pen_color.z)
+    times_went_forward: int = 0
     start_time = time.time()
     for y_px in range(0, WINDOW_HEIGHT):
         turtle.up()
@@ -290,12 +315,13 @@ def main() -> None:
         turtle.down()
         accumulated_pixels: int = 0
         for x_px in range(0, WINDOW_WIDTH):
-            px_color: Vec4 = framebuffer.backbuffer.data[y_px *
-                                                         framebuffer.backbuffer.width + x_px]
+            px_color: Vec4 = backbuffer.data[y_px *
+                                             backbuffer.width + x_px]
             px_color = quantize_color(px_color, 32)
             color_changed: bool = px_color != pen_color
 
             if (color_changed):
+                times_went_forward += 1
                 turtle.forward(accumulated_pixels)
                 pen_color = px_color
                 turtle.pencolor(pen_color.x, pen_color.y, pen_color.z)
@@ -308,8 +334,78 @@ def main() -> None:
             turtle.update()
 
     end_time = time.time()
+    print("Backbuffer presentation took", end_time - start_time, "seconds")
+
+
+def main() -> None:
+    turtle.setup(width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
+    turtle.setworldcoordinates(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1)
+
+    turtle.tracer(0, 0)
+    turtle.pensize(1)
+
+    texture = load_bmp("test.bmp")
+
+    backbuffer = Buffer([Vec4(1.0, 1.0, 1.0, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT)],
+                        WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    depth_buffer = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (1 ** 2))],
+                          WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    framebuffer: Framebuffer = Framebuffer(backbuffer, depth_buffer, texture)
+
+    far_plane: float = 100
+    near_plane: float = 0.001
+    fov: float = math.radians(90/2)
+    ar: float = WINDOW_WIDTH / WINDOW_HEIGHT
+    projection_matrix: Mat4 = Mat4(
+        Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
+        Vec4(0, 1/math.tan(fov/2), 0, 0),
+        Vec4(0, 0, far_plane/(far_plane - near_plane), -
+             (far_plane * near_plane)/(far_plane - near_plane)),
+        Vec4(0, 0, 1, 0))
+
+    model_matrix: Mat4 = Mat4(
+        Vec4(1, 0, 0, 7),
+        Vec4(0, 1, 0, -1),
+        Vec4(0, 0, 1, 5),
+        Vec4(0, 0, 0, 1))
+
+    x_rot_angle: float = math.radians(-145)
+    y_rot_angle: float = math.radians(-75)
+    x_rot_matrix: Mat4 = Mat4(
+        Vec4(1, 0, 0, 0),
+        Vec4(0, math.cos(x_rot_angle), -math.sin(x_rot_angle), 0),
+        Vec4(0, math.sin(x_rot_angle), math.cos(x_rot_angle), 0),
+        Vec4(0, 0, 0, 1))
+    y_rot_matrix: Mat4 = Mat4(
+        Vec4(math.cos(y_rot_angle), 0, math.sin(y_rot_angle), 0),
+        Vec4(0, 1, 0, 0),
+        Vec4(-math.sin(y_rot_angle), 0, math.cos(y_rot_angle), 0),
+        Vec4(0, 0, 0, 1))
+
+    (transforms, texture_uvs) = load_obj("test.obj")
+
+    for i in range(0, len(transforms)):
+        transforms[i] = multiply(y_rot_matrix, transforms[i])
+        transforms[i] = multiply(x_rot_matrix, transforms[i])
+        transforms[i] = multiply(model_matrix, transforms[i])
+        transforms[i] = multiply(projection_matrix, transforms[i])
+        transforms[i] = perspective_divide(transforms[i])
+        transforms[i] = viewport_transform(
+            transforms[i], WINDOW_WIDTH, WINDOW_HEIGHT)
+
+    for i in range(0, len(transforms), 3):
+        p1: Vertex = Vertex(transforms[i], texture_uvs[i])
+        p2: Vertex = Vertex(transforms[i + 1],
+                            texture_uvs[i + 1])
+        p3: Vertex = Vertex(transforms[i + 2],
+                            texture_uvs[i + 2])
+
+        rasterize_triangle(framebuffer, p1, p2, p3)
+    present_backbuffer(framebuffer.backbuffer)
+
     print("DONE!!!")
-    print("Took", end_time - start_time, "seconds")
 
     turtle.done()
 
