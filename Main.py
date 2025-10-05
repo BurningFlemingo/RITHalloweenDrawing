@@ -99,6 +99,7 @@ def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) 
 
         w2: float = 1.0 - w1 - w3
 
+        # beware tis is wrong for edges
         if (w1 < 0 or w2 < 0 or w3 < 0):
             continue
 
@@ -148,10 +149,14 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> N
     if (det < 0.0000001):  # completely magic number
         return
 
-    min_x_px: float = min(min(p1.transform.x, p2.transform.x), p3.transform.x)
-    max_x_px: float = max(max(p1.transform.x, p2.transform.x), p3.transform.x)
-    min_y_px: float = min(min(p1.transform.y, p2.transform.y), p3.transform.y)
-    max_y_px: float = max(max(p1.transform.y, p2.transform.y), p3.transform.y)
+    min_x_px: int = math.floor(
+        min(min(p1.transform.x, p2.transform.x), p3.transform.x))
+    max_x_px: int = math.ceil(
+        max(max(p1.transform.x, p2.transform.x), p3.transform.x))
+    min_y_px: int = math.floor(
+        min(min(p1.transform.y, p2.transform.y), p3.transform.y))
+    max_y_px: int = math.ceil(
+        max(max(p1.transform.y, p2.transform.y), p3.transform.y))
 
     min_x_px = max(min_x_px, 0)
     max_x_px = min(max_x_px, fb.backbuffer.width)
@@ -273,8 +278,9 @@ def load_obj(path: str) -> (list[Vec4], list[Vec2]):
             if (id == '#'):
                 continue
             elif (id == 'v'):
+                # -z to do right-handed to left-handed coord system change
                 transform: Vec4 = Vec4(float(items[1]), float(
-                    items[2]), float(items[3]) + 5, 1.0)
+                    items[2]), -float(items[3]), 1.0)
                 unique_transforms.append(transform)
             elif (id == 'vt'):
                 tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
@@ -282,13 +288,13 @@ def load_obj(path: str) -> (list[Vec4], list[Vec2]):
             elif (id == "f"):
                 atribs: list[list[int]] = [
                     [int(attribute_index) - 1 for attribute_index in vertex.split("/")] for vertex in items[1:]]
-                transforms.append(unique_transforms[atribs[2][0]])
-                transforms.append(unique_transforms[atribs[1][0]])
                 transforms.append(unique_transforms[atribs[0][0]])
+                transforms.append(unique_transforms[atribs[1][0]])
+                transforms.append(unique_transforms[atribs[2][0]])
 
-                tex_uvs.append(unique_tex_uvs[atribs[2][1]])
-                tex_uvs.append(unique_tex_uvs[atribs[1][1]])
                 tex_uvs.append(unique_tex_uvs[atribs[0][1]])
+                tex_uvs.append(unique_tex_uvs[atribs[1][1]])
+                tex_uvs.append(unique_tex_uvs[atribs[2][1]])
 
     return (transforms, tex_uvs)
 
@@ -366,13 +372,15 @@ def main() -> None:
         Vec4(0, 0, 1, 0))
 
     model_matrix: Mat4 = Mat4(
-        Vec4(1, 0, 0, 7),
-        Vec4(0, 1, 0, -1),
-        Vec4(0, 0, 1, 5),
-        Vec4(0, 0, 0, 1))
+        Vec4(1, 0, 0, 0),
+        Vec4(0, 1, 0, 0),
+        Vec4(0, 0, 1, 4),
+        Vec4(0, 0, 1, 1))
 
-    x_rot_angle: float = math.radians(-145)
-    y_rot_angle: float = math.radians(-75)
+    x_rot_angle: float = math.radians(60)
+    y_rot_angle: float = math.radians(0)
+    z_rot_angle: float = math.radians(135)
+
     x_rot_matrix: Mat4 = Mat4(
         Vec4(1, 0, 0, 0),
         Vec4(0, math.cos(x_rot_angle), -math.sin(x_rot_angle), 0),
@@ -383,12 +391,18 @@ def main() -> None:
         Vec4(0, 1, 0, 0),
         Vec4(-math.sin(y_rot_angle), 0, math.cos(y_rot_angle), 0),
         Vec4(0, 0, 0, 1))
+    z_rot_matrix: Mat4 = Mat4(
+        Vec4(math.cos(z_rot_angle), math.sin(z_rot_angle), 0, 0),
+        Vec4(-math.sin(z_rot_angle), math.cos(z_rot_angle), 0, 0),
+        Vec4(0, 0, 1, 0),
+        Vec4(0, 0, 0, 1))
 
     (transforms, texture_uvs) = load_obj("test.obj")
 
     for i in range(0, len(transforms)):
-        transforms[i] = multiply(y_rot_matrix, transforms[i])
+        transforms[i] = multiply(z_rot_matrix, transforms[i])
         transforms[i] = multiply(x_rot_matrix, transforms[i])
+        transforms[i] = multiply(y_rot_matrix, transforms[i])
         transforms[i] = multiply(model_matrix, transforms[i])
         transforms[i] = multiply(projection_matrix, transforms[i])
         transforms[i] = perspective_divide(transforms[i])
