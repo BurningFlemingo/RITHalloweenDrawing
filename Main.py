@@ -82,6 +82,19 @@ def multiply(mat: Mat4, vec: Vec4) -> Vec4:
     return Vec4(*[dot(row, vec) for row in mat])
 
 
+def is_covered_edge(p1: Vec4, p2: Vec4) -> bool:
+    dx: float = p2.x - p1.x
+    dy: float = p2.y - p1.y
+
+    if (dy > 0):
+        return True
+
+    if (dx < 0 and dy == 0):
+        return True
+
+    return False
+
+
 def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) -> None:
     fb, p1, p2, p3, n_samples_per_axis, *_ = ctx
     n_samples: int = n_samples_per_axis ** 2
@@ -97,10 +110,16 @@ def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) 
         v_sample: float = (v_px + v_sample_offset)
         uv: Vec4 = Vec2(u_sample, v_sample)
 
+        w1_bias: float = - \
+            0.0000001 if is_covered_edge(p2.transform, p3.transform) else 0
+        w2_bias: float = - \
+            0.0000001 if is_covered_edge(p3.transform, p1.transform) else 0
+        w3_bias: float = - \
+            0.0000001 if is_covered_edge(p1.transform, p2.transform) else 0
+
         w2: float = 1.0 - w1 - w3
 
-        # beware tis is wrong for edges
-        if (w1 < 0 or w2 < 0 or w3 < 0):
+        if (w1 <= w1_bias or w2 <= w2_bias or w3 <= w3_bias):
             continue
 
         px_depth: float = 1.0 / (w1/p1.transform.w +
@@ -405,6 +424,7 @@ def main() -> None:
         transforms[i] = multiply(y_rot_matrix, transforms[i])
         transforms[i] = multiply(model_matrix, transforms[i])
         transforms[i] = multiply(projection_matrix, transforms[i])
+
         transforms[i] = perspective_divide(transforms[i])
         transforms[i] = viewport_transform(
             transforms[i], WINDOW_WIDTH, WINDOW_HEIGHT)
