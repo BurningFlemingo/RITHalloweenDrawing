@@ -100,7 +100,7 @@ def is_covered_edge(edge: Vec4) -> bool:
     return False
 
 
-def test_samples(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) -> (list[int], float, float, float):
+def test_samples(ctx: RasterCtx, u_px: float, v_px: float, px_w1: float, px_w3: float) -> (list[int], float, float, float):
     fb, p1, p2, p3, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
     n_samples_per_axis: int = fb.n_samples_per_axis
 
@@ -109,26 +109,20 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float)
     accumulated_w1: float = 0
     accumulated_w3: float = 0
 
-    saved_w1: float = w1
-    saved_w3: float = w3
-
-    w1 += w1_step.x * (1 / (n_samples_per_axis * 2))
-    w3 += w3_step.x * (1 / (n_samples_per_axis * 2))
-    w1 += w1_step.y * (1 / (n_samples_per_axis * 2))
-    w3 += w3_step.y * (1 / (n_samples_per_axis * 2))
+    initial_w1: float = px_w1 + \
+        (w1_step.x + w1_step.y) / (n_samples_per_axis * 2)
+    initial_w3: float = px_w3 + \
+        (w3_step.x + w3_step.y) / (n_samples_per_axis * 2)
 
     samples_survived_indices: list[int] = []
 
     tint: float = 1.0
     for v_sample in range(0, n_samples_per_axis):
-        row_w1: float = w1
-        row_w3: float = w3
-
         for u_sample in range(0, n_samples_per_axis):
-            w1 = saved_w1 + (w1_step.y * v_sample/n_samples_per_axis) + \
-                (w1_step.x * u_sample/n_samples_per_axis)
-            w3 = saved_w3 + (w3_step.y * v_sample/n_samples_per_axis) + \
-                (w3_step.x * u_sample/n_samples_per_axis)
+            w1 = initial_w1 + ((w1_step.y * v_sample) +
+                               (w1_step.x * u_sample)) / n_samples_per_axis
+            w3 = initial_w3 + ((w3_step.y * v_sample) +
+                               (w3_step.x * u_sample)) / n_samples_per_axis
             w2: float = 1.0 - w1 - w3
 
             if (w1 <= w1_bias or w2 <= w2_bias or w3 <= w3_bias):
@@ -148,12 +142,6 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float)
 
             accumulated_w1 += w1
             accumulated_w3 += w3
-
-            w1 += w1_step.x * (1 / n_samples_per_axis)
-            w3 += w3_step.x * (1 / n_samples_per_axis)
-
-        w1 = row_w1 + w1_step.y * (1 / n_samples_per_axis)
-        w3 = row_w3 + w3_step.y * (1 / n_samples_per_axis)
 
     return (samples_survived_indices, accumulated_w1, accumulated_w3, tint)
 
@@ -435,15 +423,15 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 2
+    n_samples_per_axis: int = 4
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
-    z_rot_angle: float = math.radians(125)
+    z_rot_angle: float = math.radians(135)
 
     texture = load_bmp(bmp_path)
 
-    backbuffer = Buffer([Vec4(0.5, 0.5, 0.5, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
+    backbuffer = Buffer([Vec4(1.0, 1.0, 1.0, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                         WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
     depth_buffer = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
