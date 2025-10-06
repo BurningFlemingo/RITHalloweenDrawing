@@ -71,6 +71,8 @@ class RasterCtx(NamedTuple):
     p2: Vertex
     p3: Vertex
 
+    det: float
+
     w1_step: Vec2
     w3_step: Vec2
 
@@ -101,7 +103,7 @@ def is_covered_edge(edge: Vec4) -> bool:
 
 
 def test_samples(ctx: RasterCtx, u_px: float, v_px: float, px_w1: float, px_w3: float) -> (list[int], float, float):
-    fb, p1, p2, p3, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
+    fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
     n_samples_per_axis: int = fb.n_samples_per_axis
 
     px_index: int = (v_px * fb.depth_buffer.width + u_px) * fb.n_samples
@@ -122,6 +124,8 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, px_w1: float, px_w3: 
                                (w1_step.x * u_sample)) / n_samples_per_axis
             w3 = initial_w3 + ((w3_step.y * v_sample) +
                                (w3_step.x * u_sample)) / n_samples_per_axis
+            w3 /= det
+            w1 /= det
 
             w2: float = 1.0 - w1 - w3
 
@@ -147,7 +151,7 @@ def test_samples(ctx: RasterCtx, u_px: float, v_px: float, px_w1: float, px_w3: 
 
 
 def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) -> None:
-    fb, p1, p2, p3, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
+    fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
 
     samples_survived_indices, accumulated_w1, accumulated_w3 = test_samples(
         ctx, u_px, v_px, w1, w3)
@@ -231,19 +235,19 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     min_y_px = max(min_y_px, 0)
     max_y_px = min(max_y_px, fb.backbuffer.height)
 
-    w1_step: Vec2 = Vec2(-edge2.y / det, edge2.x / det)
-    w3_step: Vec2 = Vec2(-edge1.y / det, edge1.x / det)
+    w1_step: Vec2 = Vec2(-edge2.y, edge2.x)
+    w3_step: Vec2 = Vec2(-edge1.y, edge1.x)
 
     initial_uv: Vec4 = Vec4(min_x_px, min_y_px, 0, 1)
 
     v4: Vec4 = initial_uv - p1.transform
     v5: Vec4 = initial_uv - p2.transform
 
-    w1: float = ((edge2.x * v5.y) - (edge2.y * v5.x)) / det
-    w3: float = ((edge1.x * v4.y) - (edge1.y * v4.x)) / det
+    w1: float = (edge2.x * v5.y) - (edge2.y * v5.x)
+    w3: float = (edge1.x * v4.y) - (edge1.y * v4.x)
 
     ctx: RasterCtx = RasterCtx(
-        fb, p1, p2, p3, w1_step, w3_step, w1_bias, w2_bias, w3_bias)
+        fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias)
 
     for v_px in range(int(min_y_px), int(max_y_px)):
         row_w1: float = w1
