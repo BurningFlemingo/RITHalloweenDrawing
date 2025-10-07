@@ -67,6 +67,7 @@ class Mat4(NamedTuple):
 
 class Vertex(NamedTuple):
     transform: Vec4
+    normal: Vec4
     texture_uv: Vec2
 
 
@@ -215,11 +216,13 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason
     p1 = Vertex(subpx_transform(p1.transform, n_subpx_per_axis),
+                p1.normal,
                 p1.texture_uv * (1/p1.transform.w))
     p2 = Vertex(subpx_transform(p2.transform, n_subpx_per_axis),
+                p2.normal,
                 p2.texture_uv * (1/p2.transform.w))
     p3 = Vertex(subpx_transform(p3.transform, n_subpx_per_axis),
-                p3.texture_uv * (1/p3.transform.w))
+                p3.normal, p3.texture_uv * (1/p3.transform.w))
 
     edge1: Vec4 = p2.transform - p1.transform
     edge2: Vec4 = p3.transform - p2.transform
@@ -342,11 +345,13 @@ def load_bmp(path: str) -> Buffer:
         return Buffer(pixels, width, height, 1)
 
 
-def load_obj(path: str) -> (list[Vec4], list[Vec2]):
+def load_obj(path: str) -> (list[Vec4], list[Vec4], list[Vec2]):
     unique_transforms: list[Vec4] = []
+    unique_normals: list[Vec4] = []
     unique_tex_uvs: list[Vec2] = []
 
     transforms: list[Vec4] = []
+    normals: list[Vec4] = []
     tex_uvs: list[Vec2] = []
     with open(path) as obj:
         for line in obj:
@@ -363,9 +368,13 @@ def load_obj(path: str) -> (list[Vec4], list[Vec2]):
                 transform: Vec4 = Vec4(float(items[1]), float(
                     items[2]), -float(items[3]), 1.0)
                 unique_transforms.append(transform)
-            elif (id == 'vt'):
+            elif (id == "vt"):
                 tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
                 unique_tex_uvs.append(tex_uv)
+            elif (id == "vn"):
+                normal: Vec4 = Vec4(float(items[1]), float(
+                    items[2]), float(items[3]), 1.0)
+                unique_normals.append(normal)
             elif (id == "f"):
                 atribs: list[list[int]] = [
                     [int(attribute_index) - 1 for attribute_index in vertex.split("/")] for vertex in items[1:]]
@@ -373,11 +382,15 @@ def load_obj(path: str) -> (list[Vec4], list[Vec2]):
                 transforms.append(unique_transforms[atribs[1][0]])
                 transforms.append(unique_transforms[atribs[2][0]])
 
+                normals.append(unique_normals[atribs[0][2]])
+                normals.append(unique_normals[atribs[1][2]])
+                normals.append(unique_normals[atribs[2][2]])
+
                 tex_uvs.append(unique_tex_uvs[atribs[0][1]])
                 tex_uvs.append(unique_tex_uvs[atribs[1][1]])
                 tex_uvs.append(unique_tex_uvs[atribs[2][1]])
 
-    return (transforms, tex_uvs)
+    return (transforms, normals, tex_uvs)
 
 
 def viewport_transform(ndc: Vec4, width: int, height: int) -> Vec4:
@@ -491,7 +504,7 @@ def main() -> None:
         Vec4(0, 0, 1, 0),
         Vec4(0, 0, 0, 1))
 
-    (transforms, texture_uvs) = load_obj(obj_path)
+    (transforms, normals, texture_uvs) = load_obj(obj_path)
 
     for i in range(0, len(transforms)):
         transforms[i] = multiply(z_rot_matrix, transforms[i])
@@ -507,10 +520,12 @@ def main() -> None:
     n_triangles_rasterized: int = 0
     start_time = time.time()
     for i in range(0, len(transforms), 3):
-        p1: Vertex = Vertex(transforms[i], texture_uvs[i])
+        p1: Vertex = Vertex(transforms[i], normals[i], texture_uvs[i])
         p2: Vertex = Vertex(transforms[i + 1],
+                            normals[i + 1],
                             texture_uvs[i + 1])
         p3: Vertex = Vertex(transforms[i + 2],
+                            normals[i + 2],
                             texture_uvs[i + 2])
 
         triangle_was_rasterized: bool = rasterize_triangle(
