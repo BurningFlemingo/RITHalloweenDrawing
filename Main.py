@@ -108,11 +108,6 @@ def is_covered_edge(edge: Vec4) -> bool:
     return False
 
 
-lowest_w1: int = 10000000000
-lowest_w2: int = 10000000000
-lowest_w3: int = 10000000000
-
-
 def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (list[int], int, int):
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
     n_samples_per_axis: int = fb.n_samples_per_axis
@@ -127,8 +122,8 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     w2_sample_step: Vec2 = Vec2(w2_px_step.x // n_samples_per_axis,
                                 w2_px_step.y // n_samples_per_axis)
 
-    w1 += (w1_px_step.x + w1_px_step.y) // (n_samples_per_axis * 2)
-    w2 += (w2_px_step.x + w2_px_step.y) // (n_samples_per_axis * 2)
+    w1 += (w1_sample_step.x + w1_px_step.y) // (n_samples_per_axis * 2)
+    w2 += (w2_sample_step.x + w2_px_step.y) // (n_samples_per_axis * 2)
 
     samples_survived_indices: list[int] = []
 
@@ -136,36 +131,27 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
         row_w1: int = w1
         row_w2: int = w2
         for u_sample in range(0, n_samples_per_axis):
-
             w3: int = det - w1 - w2
 
-            if (w1 <= -w1_bias or w2 <= -w2_bias or w3 <= -w3_bias):
-                w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
-                w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
-                continue
+            if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
+                px_depth: float = det / (w1/p1.transform.w +
+                                         w2/p2.transform.w + w3/p3.transform.w)
 
-            px_depth: float = det / (w1/p1.transform.w +
-                                     w2/p2.transform.w + w3/p3.transform.w)
+                sample_index: int = v_sample * n_samples_per_axis + u_sample
+                depth_buffer_index: int = px_index + sample_index
 
-            sample_index: int = v_sample * n_samples_per_axis + u_sample
-            depth_buffer_index: int = px_index + sample_index
+                if (px_depth <= fb.depth_buffer.data[depth_buffer_index]):
+                    fb.depth_buffer.data[depth_buffer_index] = px_depth
+                    samples_survived_indices.append(sample_index)
 
-            if (px_depth > fb.depth_buffer.data[depth_buffer_index]):
-                w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
-                w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
-                continue
+                    accumulated_w1 += w1
+                    accumulated_w2 += w2
 
-            fb.depth_buffer.data[depth_buffer_index] = px_depth
-            samples_survived_indices.append(sample_index)
+            w1 += w1_sample_step.x
+            w2 += w2_sample_step.x
 
-            accumulated_w1 += w1
-            accumulated_w2 += w2
-
-            w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
-            w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
-
-        w1 = row_w1 + (w1_px_step.y // n_samples_per_axis) * v_sample
-        w2 = row_w2 + (w2_px_step.y // n_samples_per_axis) * v_sample
+        w1 = row_w1 + w1_sample_step.y
+        w2 = row_w2 + w2_sample_step.y
 
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
@@ -277,9 +263,6 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
         row_w1: float = w1
         row_w2: float = w2
         for u_px in range(int(min_x_px), int(max_x_px)):
-            if (u_px == 546 and v_px == 400):
-                print("this is the one")
-
             shade_pixel(ctx, u_px, v_px, w1, w2)
 
             w1 += w1_px_step.x
@@ -454,7 +437,7 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 4
+    n_samples_per_axis: int = 1
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
@@ -523,7 +506,6 @@ def main() -> None:
 
     n_triangles_rasterized: int = 0
     start_time = time.time()
-    setup_turtle()
     for i in range(0, len(transforms), 3):
         p1: Vertex = Vertex(transforms[i], texture_uvs[i])
         p2: Vertex = Vertex(transforms[i + 1],
@@ -536,11 +518,12 @@ def main() -> None:
         if triangle_was_rasterized:
             n_triangles_rasterized += 1
 
-    resolve_buffer(framebuffer.backbuffer)
-    present_backbuffer(framebuffer.backbuffer)
-
     end_time = time.time()
     print("Rasterization took", end_time - start_time, "seconds")
+
+    setup_turtle()
+    resolve_buffer(framebuffer.backbuffer)
+    present_backbuffer(framebuffer.backbuffer)
 
     print(n_triangles_rasterized, "triangles were rasterized")
 
