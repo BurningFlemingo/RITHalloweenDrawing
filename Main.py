@@ -43,6 +43,12 @@ class Buffer(NamedTuple):
     height: int
     n_samples_per_axis: int
 
+    # writes to all samples
+    def write2D(self, x: int, y: int, val: Vec4):
+        samples: int = self.n_samples_per_axis ** 2
+        for sample in range(0, samples):
+            self.data[samples * (y * self.width + x) + sample] = val
+
 
 class Framebuffer(NamedTuple):
     backbuffer: Buffer
@@ -71,10 +77,10 @@ class RasterCtx(NamedTuple):
     p2: Vertex
     p3: Vertex
 
-    det: float
+    det: int
 
-    w1_step: Vec2
-    w3_step: Vec2
+    w1_px_step: Vec2
+    w2_px_step: Vec2
 
     w1_bias: float
     w2_bias: float
@@ -93,7 +99,7 @@ def multiply(mat: Mat4, vec: Vec4) -> Vec4:
 
 
 def is_covered_edge(edge: Vec4) -> bool:
-    if (edge.y > 0):
+    if (edge.y < 0):
         return True
 
     if (edge.x < 0 and edge.y == 0):
@@ -102,67 +108,67 @@ def is_covered_edge(edge: Vec4) -> bool:
     return False
 
 
-def test_samples(ctx: RasterCtx, u_px: float, v_px: float, px_w1: float, px_w3: float) -> (list[int], float, float):
-    fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
+def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (list[int], int, int):
+    fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
     n_samples_per_axis: int = fb.n_samples_per_axis
 
     px_index: int = (v_px * fb.depth_buffer.width + u_px) * fb.n_samples
 
-    accumulated_w1: float = 0
-    accumulated_w3: float = 0
+    accumulated_w1: int = 0
+    accumulated_w2: int = 0
 
-    initial_w1: float = px_w1 + \
-        (w1_step.x + w1_step.y) / (n_samples_per_axis * 2)
-    initial_w3: float = px_w3 + \
-        (w3_step.x + w3_step.y) / (n_samples_per_axis * 2)
+    w1_sample_step: Vec2 = Vec2(w1_px_step.x // n_samples_per_axis,
+                                w1_px_step.y // n_samples_per_axis)
+    w2_sample_step: Vec2 = Vec2(w2_px_step.x // n_samples_per_axis,
+                                w2_px_step.y // n_samples_per_axis)
+
+    w1 += (w1_sample_step.x + w1_px_step.y) // (n_samples_per_axis * 2)
+    w2 += (w2_sample_step.x + w2_px_step.y) // (n_samples_per_axis * 2)
 
     samples_survived_indices: list[int] = []
 
     for v_sample in range(0, n_samples_per_axis):
+        row_w1: int = w1
+        row_w2: int = w2
         for u_sample in range(0, n_samples_per_axis):
-            w1 = initial_w1 + ((w1_step.y * v_sample) +
-                               (w1_step.x * u_sample)) / n_samples_per_axis
-            w3 = initial_w3 + ((w3_step.y * v_sample) +
-                               (w3_step.x * u_sample)) / n_samples_per_axis
-            w3 /= det
-            w1 /= det
+            w3: int = det - w1 - w2
 
-            w2: float = 1.0 - w1 - w3
+            if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
+                px_depth: float = det / (w1/p1.transform.w +
+                                         w2/p2.transform.w + w3/p3.transform.w)
 
-            if (w1 <= w1_bias or w2 <= w2_bias or w3 <= w3_bias):
-                continue
+                sample_index: int = v_sample * n_samples_per_axis + u_sample
+                depth_buffer_index: int = px_index + sample_index
 
-            px_depth: float = 1.0 / (w1/p1.transform.w +
-                                     w2/p2.transform.w + w3/p3.transform.w)
+                if (px_depth <= fb.depth_buffer.data[depth_buffer_index]):
+                    fb.depth_buffer.data[depth_buffer_index] = px_depth
+                    samples_survived_indices.append(sample_index)
 
-            sample_index: int = v_sample * n_samples_per_axis + u_sample
-            depth_buffer_index: int = px_index + sample_index
+                    accumulated_w1 += w1
+                    accumulated_w2 += w2
 
-            if (px_depth > fb.depth_buffer.data[depth_buffer_index]):
-                continue
+            w1 += w1_sample_step.x
+            w2 += w2_sample_step.x
 
-            fb.depth_buffer.data[depth_buffer_index] = px_depth
-            samples_survived_indices.append(sample_index)
+        w1 = row_w1 + w1_sample_step.y
+        w2 = row_w2 + w2_sample_step.y
 
-            accumulated_w1 += w1
-            accumulated_w3 += w3
-
-    return (samples_survived_indices, accumulated_w1, accumulated_w3)
+    return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
-def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) -> None:
-    fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias = ctx
+def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
+    fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
-    samples_survived_indices, accumulated_w1, accumulated_w3 = test_samples(
-        ctx, u_px, v_px, w1, w3)
+    samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
+        ctx, u_px, v_px, w1, w2)
 
     n_surviving_samples: int = len(samples_survived_indices)
     if (n_surviving_samples == 0):
-        return
+        return False
 
-    w1 = accumulated_w1 / n_surviving_samples
-    w3 = accumulated_w3 / n_surviving_samples
-    w2 = 1.0 - w1 - w3
+    w1 = accumulated_w1 / (n_surviving_samples * det)
+    w2 = accumulated_w2 / (n_surviving_samples * det)
+    w3 = 1.0 - w1 - w2
     px_depth: float = 1.0 / (w1/p1.transform.w +
                              w2/p2.transform.w + w3/p3.transform.w)
 
@@ -179,11 +185,11 @@ def shade_pixel(ctx: RasterCtx, u_px: float, v_px: float, w1: float, w3: float) 
 
     texture_color: Vec4 = fb.texture.data[tex_index]
 
-    final_color: Vec4 = texture_color
-
     px_index: int = (v_px * fb.backbuffer.width + u_px) * fb.n_samples
     for sample_index in samples_survived_indices:
         fb.backbuffer.data[px_index + sample_index] = final_color
+
+    return True
 
 
 def resolve_buffer(buffer: Buffer) -> None:
@@ -200,65 +206,69 @@ def resolve_buffer(buffer: Buffer) -> None:
                 buffer.data[px_index + sample_index] = average_value
 
 
+def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
+    return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
+
+
 def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+    n_subpx_per_axis: int = 256
+
     # pre-dividing so inner loop isnt calculating this a ton for no reason
-    p1 = Vertex(p1.transform, p1.texture_uv * (1/p1.transform.w))
-    p2 = Vertex(p2.transform, p2.texture_uv * (1/p2.transform.w))
-    p3 = Vertex(p3.transform, p3.texture_uv * (1/p3.transform.w))
+    p1 = Vertex(subpx_transform(p1.transform, n_subpx_per_axis),
+                p1.texture_uv * (1/p1.transform.w))
+    p2 = Vertex(subpx_transform(p2.transform, n_subpx_per_axis),
+                p2.texture_uv * (1/p2.transform.w))
+    p3 = Vertex(subpx_transform(p3.transform, n_subpx_per_axis),
+                p3.texture_uv * (1/p3.transform.w))
 
     edge1: Vec4 = p2.transform - p1.transform
     edge2: Vec4 = p3.transform - p2.transform
     edge3: Vec4 = p1.transform - p3.transform
 
-    w1_bias: float = - \
-        0.00001 if is_covered_edge(edge1) else 0
-    w2_bias: float = - \
-        0.00001 if is_covered_edge(edge2) else 0
-    w3_bias: float = - \
-        0.00001 if is_covered_edge(edge3) else 0
+    w1_bias: int = 1 if is_covered_edge(edge2) else 0
+    w2_bias: int = 1 if is_covered_edge(edge3) else 0
+    w3_bias: int = 1 if is_covered_edge(edge1) else 0
 
-    det: float = (edge1.x * edge2.y) - (edge1.y * edge2.x)
-    if (det < 0.0000001):  # completely magic number
+    det: int = (edge1.x * edge2.y) - (edge1.y * edge2.x)
+    if (det <= 0):
         return False
 
-    min_x_px: int = math.floor(
-        min(min(p1.transform.x, p2.transform.x), p3.transform.x))
-    max_x_px: int = math.ceil(
-        max(max(p1.transform.x, p2.transform.x), p3.transform.x))
-    min_y_px: int = math.floor(
-        min(min(p1.transform.y, p2.transform.y), p3.transform.y))
-    max_y_px: int = math.ceil(
-        max(max(p1.transform.y, p2.transform.y), p3.transform.y))
+    min_x_px: int = math.floor(min(
+        min(p1.transform.x, p2.transform.x), p3.transform.x) / n_subpx_per_axis)
+    max_x_px: int = math.ceil(max(
+        max(p1.transform.x, p2.transform.x), p3.transform.x) / n_subpx_per_axis)
+    min_y_px: int = math.floor(min(
+        min(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
+    max_y_px: int = math.ceil(max(
+        max(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
 
-    min_x_px = max(min_x_px, 0)
-    max_x_px = min(max_x_px, fb.backbuffer.width)
-    min_y_px = max(min_y_px, 0)
-    max_y_px = min(max_y_px, fb.backbuffer.height)
+    w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,
+                            int(edge2.x) * n_subpx_per_axis)
+    w2_px_step: Vec2 = Vec2(int(-edge3.y) * n_subpx_per_axis,
+                            int(edge3.x) * n_subpx_per_axis)
 
-    w1_step: Vec2 = Vec2(-edge2.y, edge2.x)
-    w3_step: Vec2 = Vec2(-edge1.y, edge1.x)
+    initial_uv: Vec4 = Vec4(min_x_px * n_subpx_per_axis,
+                            min_y_px * n_subpx_per_axis, 0, 1)
 
-    initial_uv: Vec4 = Vec4(min_x_px, min_y_px, 0, 1)
-
-    v4: Vec4 = initial_uv - p1.transform
     v5: Vec4 = initial_uv - p2.transform
+    v6: Vec4 = initial_uv - p3.transform
 
-    w1: float = (edge2.x * v5.y) - (edge2.y * v5.x)
-    w3: float = (edge1.x * v4.y) - (edge1.y * v4.x)
+    w1: int = (int(edge2.x) * int(v5.y)) - (int(edge2.y) * int(v5.x))
+    w2: int = (int(edge3.x) * int(v6.y)) - (int(edge3.y) * int(v6.x))
 
     ctx: RasterCtx = RasterCtx(
-        fb, p1, p2, p3, det, w1_step, w3_step, w1_bias, w2_bias, w3_bias)
+        fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
     for v_px in range(int(min_y_px), int(max_y_px)):
         row_w1: float = w1
-        row_w3: float = w3
+        row_w2: float = w2
         for u_px in range(int(min_x_px), int(max_x_px)):
-            shade_pixel(ctx, u_px, v_px, w1, w3)
+            shade_pixel(ctx, u_px, v_px, w1, w2)
 
-            w1 += w1_step.x
-            w3 += w3_step.x
-        w3 = row_w3 + w3_step.y
-        w1 = row_w1 + w1_step.y
+            w1 += w1_px_step.x
+            w2 += w2_px_step.x
+        w1 = row_w1 + w1_px_step.y
+        w2 = row_w2 + w2_px_step.y
 
     return True
 
@@ -284,7 +294,7 @@ def load_bmp(path: str) -> Buffer:
         compression_method: int = int.from_bytes(
             loaded_bmp[30:34], byteorder="little")
         n_colors_in_pallet: int = int.from_bytes(
-            loaded_bmp[46:4], byteorder="little")
+            loaded_bmp[46:50], byteorder="little")
 
         if (compression_method != 0 or n_colors_in_pallet != 0 or bpp <= 16):
             print("BMP is wrong.")
@@ -427,7 +437,7 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 2
+    n_samples_per_axis: int = 1
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
@@ -495,7 +505,7 @@ def main() -> None:
             transforms[i], WINDOW_WIDTH, WINDOW_HEIGHT)
 
     n_triangles_rasterized: int = 0
-    setup_turtle()
+    start_time = time.time()
     for i in range(0, len(transforms), 3):
         p1: Vertex = Vertex(transforms[i], texture_uvs[i])
         p2: Vertex = Vertex(transforms[i + 1],
@@ -508,9 +518,10 @@ def main() -> None:
         if triangle_was_rasterized:
             n_triangles_rasterized += 1
 
-        if (n_triangles_rasterized % 500 == 0):
-            print(n_triangles_rasterized, "triangles were rasterized")
+    end_time = time.time()
+    print("Rasterization took", end_time - start_time, "seconds")
 
+    setup_turtle()
     resolve_buffer(framebuffer.backbuffer)
     present_backbuffer(framebuffer.backbuffer)
 
