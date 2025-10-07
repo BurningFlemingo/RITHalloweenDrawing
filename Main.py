@@ -136,16 +136,12 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
         row_w1: int = w1
         row_w2: int = w2
         for u_sample in range(0, n_samples_per_axis):
-            abs_w1 = ((p3.transform.x - p2.transform.x) * (v_px * 256 + (v_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p2.transform.y)) - \
-                ((p3.transform.y - p2.transform.y) * (u_px * 256 +
-                 (u_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p2.transform.x))
-            abs_w2 = ((p1.transform.x - p3.transform.x) * (v_px * 256 + (v_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p3.transform.y)) - \
-                ((p1.transform.y - p3.transform.y) * (u_px * 256 +
-                 (u_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p3.transform.x))
 
             w3: int = det - w1 - w2
 
             if (w1 <= -w1_bias or w2 <= -w2_bias or w3 <= -w3_bias):
+                w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
+                w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
                 continue
 
             px_depth: float = det / (w1/p1.transform.w +
@@ -155,6 +151,8 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
             depth_buffer_index: int = px_index + sample_index
 
             if (px_depth > fb.depth_buffer.data[depth_buffer_index]):
+                w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
+                w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
                 continue
 
             fb.depth_buffer.data[depth_buffer_index] = px_depth
@@ -456,7 +454,7 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 2
+    n_samples_per_axis: int = 4
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
