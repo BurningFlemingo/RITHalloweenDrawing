@@ -127,8 +127,8 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     w2_sample_step: Vec2 = Vec2(w2_px_step.x // n_samples_per_axis,
                                 w2_px_step.y // n_samples_per_axis)
 
-    w1 += (w1_sample_step.x // 2) + (w1_sample_step.y // 2)
-    w2 += (w2_sample_step.x // 2) + (w2_sample_step.y // 2)
+    w1 += (w1_px_step.y + w1_px_step.x) // (n_samples_per_axis * 2)
+    w2 += (w2_px_step.y + w2_px_step.x) // (n_samples_per_axis * 2)
 
     samples_survived_indices: list[int] = []
 
@@ -136,15 +136,9 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
         row_w1: int = w1
         row_w2: int = w2
         for u_sample in range(0, n_samples_per_axis):
-            w1 = ((p3.transform.x - p2.transform.x) * (v_px * 256 + (v_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p2.transform.y)) - \
-                ((p3.transform.y - p2.transform.y) * (u_px * 256 +
-                 (u_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p2.transform.x))
-            w2 = ((p1.transform.x - p3.transform.x) * (v_px * 256 + (v_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p3.transform.y)) - \
-                ((p1.transform.y - p3.transform.y) * (u_px * 256 +
-                 (u_sample * (256//n_samples_per_axis) + 256//(n_samples_per_axis * 2)) - p3.transform.x))
             w3: int = det - w1 - w2
 
-            if (w1 <= -w1_bias or w2 <= -w2_bias or w3 <= -w3_bias):
+            if ((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias) < 0):
                 continue
 
             px_depth: float = det / (w1/p1.transform.w +
@@ -161,11 +155,12 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
 
             accumulated_w1 += w1
             accumulated_w2 += w2
-            w1 += w1_sample_step.x
-            w2 += w2_sample_step.x
 
-        w1 = row_w1 + w1_sample_step.y
-        w2 = row_w2 + w2_sample_step.y
+            w1 = row_w1 + (w1_px_step.x // n_samples_per_axis) * u_sample
+            w2 = row_w2 + (w2_px_step.x // n_samples_per_axis) * u_sample
+
+        w1 = row_w1 + (w1_px_step.y // n_samples_per_axis) * v_sample
+        w2 = row_w2 + (w2_px_step.y // n_samples_per_axis) * v_sample
 
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
@@ -256,10 +251,10 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     max_y_px: int = math.ceil(max(
         max(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
 
-    w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,
-                            int(edge2.x) * n_subpx_per_axis)
-    w2_px_step: Vec2 = Vec2(int(-edge3.y) * n_subpx_per_axis,
-                            int(edge3.x) * n_subpx_per_axis)
+    w1_px_step: Vec2 = Vec2(-edge2.y * n_subpx_per_axis,
+                            edge2.x * n_subpx_per_axis)
+    w2_px_step: Vec2 = Vec2(-edge3.y * n_subpx_per_axis,
+                            edge3.x * n_subpx_per_axis)
 
     initial_uv: Vec4 = Vec4(min_x_px * n_subpx_per_axis,
                             min_y_px * n_subpx_per_axis, 0, 1)
@@ -267,8 +262,8 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     v5: Vec4 = initial_uv - p2.transform
     v6: Vec4 = initial_uv - p3.transform
 
-    w1: int = (int(edge2.x) * int(v5.y)) - (int(edge2.y) * int(v5.x))
-    w2: int = (int(edge3.x) * int(v6.y)) - (int(edge3.y) * int(v6.x))
+    w1: int = (edge2.x * v5.y) - (edge2.y * v5.x)
+    w2: int = (edge3.x * v6.y) - (edge3.y * v6.x)
 
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
@@ -454,7 +449,7 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 2
+    n_samples_per_axis: int = 4
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
