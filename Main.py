@@ -121,7 +121,7 @@ def dot(v1, v2):
 
 
 class Buffer(NamedTuple):
-    data: list[Vec4]
+    data: list[Any]
     width: int
     height: int
     n_samples_per_axis: int
@@ -132,6 +132,19 @@ class Buffer(NamedTuple):
         for sample in range(0, samples):
             self.data[samples * (y * self.width + x) + sample] = val
 
+    def sampleUV(self, u: float, v: float):
+        """
+            u and v should be normalized between 0 and 1.
+        """
+        n_samples: int = self.n_samples_per_axis ** 2
+
+        x: int = int(u * (self.width - 1))
+        y: int = int(v * (self.height - 1))
+
+        index: int = (y * self.width + x) * n_samples
+
+        return self.data[index]
+
 
 class Framebuffer(NamedTuple):
     backbuffer: Buffer
@@ -141,10 +154,15 @@ class Framebuffer(NamedTuple):
     n_samples: int
 
 
-class Vertex(NamedTuple):
-    transform: Vec4
+class Attributes(NamedTuple):
     normal: Vec4
     texture_uv: Vec2
+    position: Vec3
+
+
+class Vertex(NamedTuple):
+    transform: Vec4
+    attrib: Attributes
 
 
 class RasterCtx(NamedTuple):
@@ -222,6 +240,26 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
+def interpolate_attributes(p1: Attributes, p2: Attributes, p3: Attributes, w1: float, w2: float, w3: float, px_depth: float) -> Attributes:
+
+    n_attributes: int = len(p1)
+    attributes = []
+    for attrib_index in range(0, n_attributes):
+        a1 = p1[attrib_index] * w1
+        a2 = p2[attrib_index] * w2
+        a3 = p3[attrib_index] * w3
+        interpolated: Vec2 = (a1 + a2 + a3) * px_depth
+        attributes.append(interpolated)
+
+    return Attributes(*attributes)
+
+
+def fragment_shader(fb: Framebuffer, attrib: Attributes) -> Vec4:
+    normal, tex_uv, position = attrib
+
+    return fb.texture.sampleUV(*tex_uv)
+
+
 def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
@@ -238,22 +276,13 @@ def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     px_depth: float = 1.0 / (w1/p1.transform.w +
                              w2/p2.transform.w + w3/p3.transform.w)
 
-    # point attributes were pre-divided by their respective depths
-    t1: Vec2 = p1.texture_uv * w1
-    t2: Vec2 = p2.texture_uv * w2
-    t3: Vec2 = p3.texture_uv * w3
-    tuv: Vec2 = (t1 + t2 + t3) * px_depth
-    tex_max_index: int = (fb.texture.height * fb.texture.width) - 1
-    tex_index: int = (
-        int(tuv.y * fb.texture.height) * fb.texture.width) + int(tuv.x * fb.texture.width)
-
-    tex_index = max(min(tex_index, tex_max_index), 0)
-
-    texture_color: Vec4 = fb.texture.data[tex_index]
+    interpolated_attributes: Attributes = interpolate_attributes(
+        p1.attrib, p2.attrib, p3.attrib, w1, w2, w3, px_depth)
+    color: Vec4 = fragment_shader(fb, interpolated_attributes)
 
     px_index: int = (v_px * fb.backbuffer.width + u_px) * fb.n_samples
     for sample_index in samples_survived_indices:
-        fb.backbuffer.data[px_index + sample_index] = texture_color
+        fb.backbuffer.data[px_index + sample_index] = color
 
     return True
 
@@ -276,18 +305,26 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
 
+def attrib_pre_divide(p: Vertex) -> Attributes:
+    return Attributes(
+        p.attrib.normal / p.transform.w,
+        p.attrib.texture_uv / p.transform.w,
+        p.attrib.position / p.transform.w)
+
+
 def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason
-    p1 = Vertex(subpx_transform(p1.transform, n_subpx_per_axis),
-                p1.normal,
-                p1.texture_uv / p1.transform.w)
-    p2 = Vertex(subpx_transform(p2.transform, n_subpx_per_axis),
-                p2.normal,
-                p2.texture_uv / p2.transform.w)
-    p3 = Vertex(subpx_transform(p3.transform, n_subpx_per_axis),
-                p3.normal, p3.texture_uv / p3.transform.w)
+    p1 = Vertex(
+        subpx_transform(p1.transform, n_subpx_per_axis),
+        attrib_pre_divide(p1))
+    p2 = Vertex(
+        subpx_transform(p2.transform, n_subpx_per_axis),
+        attrib_pre_divide(p2))
+    p3 = Vertex(
+        subpx_transform(p3.transform, n_subpx_per_axis),
+        attrib_pre_divide(p3))
 
     edge1: Vec4 = p2.transform - p1.transform
     edge2: Vec4 = p3.transform - p2.transform
@@ -574,26 +611,29 @@ def main() -> None:
     mvp_matrix: Mat4 = projection_matrix * model_matrix * \
         x_rot_matrix * y_rot_matrix * z_rot_matrix
 
+    vertices: list[Vertex] = []
     for i in range(0, len(transforms)):
-        transforms[i] = mvp_matrix * transforms[i]
+        # vertex shader
+        transform: Vec4 = mvp_matrix * transforms[i]
+        attribs: Attributes = Attributes(normals[i], texture_uvs[i], transform)
 
-        transforms[i] = perspective_divide(transforms[i])
-        transforms[i] = viewport_transform(
-            transforms[i], WINDOW_WIDTH, WINDOW_HEIGHT)
+        transform = perspective_divide(transform)
+        transform = viewport_transform(
+            transform, WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        vertex: Vertex = Vertex(transform, attribs)
+        vertices.append(vertex)
 
     n_triangles_rasterized: int = 0
     start_time = time.time()
-    for i in range(0, len(transforms), 3):
-        p1: Vertex = Vertex(transforms[i], normals[i], texture_uvs[i])
-        p2: Vertex = Vertex(transforms[i + 1],
-                            normals[i + 1],
-                            texture_uvs[i + 1])
-        p3: Vertex = Vertex(transforms[i + 2],
-                            normals[i + 2],
-                            texture_uvs[i + 2])
+    for i in range(0, len(vertices), 3):
+        v1: Vertex = vertices[i]
+        v2: Vertex = vertices[i + 1]
+        v3: Vertex = vertices[i + 2]
 
         triangle_was_rasterized: bool = rasterize_triangle(
-            framebuffer, p1, p2, p3)
+            framebuffer, v1, v2, v3)
+
         if triangle_was_rasterized:
             n_triangles_rasterized += 1
 
