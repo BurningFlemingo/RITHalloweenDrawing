@@ -89,6 +89,17 @@ class Vec2(NamedTuple):
         return self / self.magnitude()
 
 
+def magnitude(vec):
+    accumulated = 0
+    for e in vec:
+        accumulated += e ** 2
+    return math.sqrt(accumulated)
+
+
+def normalize(vec):
+    return vec / magnitude(vec)
+
+
 class Mat4(NamedTuple):
     row1: Vec4
     row2: Vec4
@@ -118,6 +129,14 @@ def dot(v1, v2):
     for a, b in zip(v1, v2):
         accumulated += a * b
     return accumulated
+
+
+def hadamard(v1, v2):
+    return type(v1)(*[a * b for a, b in zip(v1, v2)])
+
+
+def reflect(incoming, normal):
+    return incoming - (normal * (2 * dot(normal, incoming)))
 
 
 class Buffer(NamedTuple):
@@ -256,8 +275,33 @@ def interpolate_attributes(p1: Attributes, p2: Attributes, p3: Attributes, w1: f
 
 def fragment_shader(fb: Framebuffer, attrib: Attributes) -> Vec4:
     normal, tex_uv, position = attrib
+    ambient_strength: float = 0.0
+    specular_strength: float = 0.5
+    shininess: float = 32
 
-    return fb.texture.sampleUV(*tex_uv)
+    light_color: Vec3 = Vec3(1.0, 0.3, 1.0)
+    light_pos: Vec3 = Vec3(10, 0, 1)
+
+    norm: float = normalize(normal)
+
+    view_dir: Vec3 = normalize(position * -1)
+
+    # add support for uniforms
+    light_dir: Vec3 = normalize(light_pos - position)
+
+    ambient: Vec3 = light_color * ambient_strength
+
+    diffuse_strength: float = max(dot(light_dir, norm), 0)
+    diffuse: Vec3 = light_color * diffuse_strength
+
+    spec: float = max(dot(light_dir, view_dir), 0) ** shininess
+    specular = light_color * (spec * specular_strength)
+
+    object_color: Vec3 = Vec3(*fb.texture.sampleUV(*tex_uv)[:3])
+    result: Vec3 = hadamard(
+        ambient + diffuse + specular + Vec3(0.3, 0.3, 0.3), object_color)
+
+    return Vec4(*result, 1.0)
 
 
 def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
@@ -279,6 +323,11 @@ def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     interpolated_attributes: Attributes = interpolate_attributes(
         p1.attrib, p2.attrib, p3.attrib, w1, w2, w3, px_depth)
     color: Vec4 = fragment_shader(fb, interpolated_attributes)
+    color = Vec4(
+        min(max(color.x, 0.0), 1.0),
+        min(max(color.y, 0.0), 1.0),
+        min(max(color.z, 0.0), 1.0),
+        min(max(color.w, 0.0), 1.0))
 
     px_index: int = (v_px * fb.backbuffer.width + u_px) * fb.n_samples
     for sample_index in samples_survived_indices:
@@ -474,8 +523,9 @@ def load_obj(path: str) -> (list[Vec4], list[Vec4], list[Vec2]):
                 tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
                 unique_tex_uvs.append(tex_uv)
             elif (id == "vn"):
+                # -z to do right-handed to left-handed coord system change
                 normal: Vec4 = Vec4(float(items[1]), float(
-                    items[2]), float(items[3]), 1.0)
+                    items[2]), -float(items[3]), 1.0)
                 unique_normals.append(normal)
             elif (id == "f"):
                 atribs: list[list[int]] = [
@@ -556,11 +606,11 @@ def main() -> None:
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
-    z_rot_angle: float = math.radians(135)
+    z_rot_angle: float = math.radians(125)
 
     texture = load_bmp(bmp_path)
 
-    backbuffer = Buffer([Vec4(1.0, 1.0, 1.0, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
+    backbuffer = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                         WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
     depth_buffer = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
@@ -587,8 +637,8 @@ def main() -> None:
     model_matrix: Mat4 = Mat4(
         Vec4(1, 0, 0, 0),
         Vec4(0, 1, 0, 0),
-        Vec4(0, 0, 1, 4),
-        Vec4(0, 0, 1, 1))
+        Vec4(0, 0, 1, 3),
+        Vec4(0, 0, 0, 1))
 
     x_rot_matrix: Mat4 = Mat4(
         Vec4(1, 0, 0, 0),
@@ -608,14 +658,17 @@ def main() -> None:
 
     (transforms, normals, texture_uvs) = load_obj(obj_path)
 
-    mvp_matrix: Mat4 = projection_matrix * model_matrix * \
-        x_rot_matrix * y_rot_matrix * z_rot_matrix
+    rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
+    world_matrix: Mat4 = model_matrix * rot_matrix
 
     vertices: list[Vertex] = []
     for i in range(0, len(transforms)):
         # vertex shader
-        transform: Vec4 = mvp_matrix * transforms[i]
-        attribs: Attributes = Attributes(normals[i], texture_uvs[i], transform)
+        transform: Vec4 = world_matrix * transforms[i]
+        normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
+        attribs: Attributes = Attributes(normal, texture_uvs[i], transform)
+
+        transform = projection_matrix * transform
 
         transform = perspective_divide(transform)
         transform = viewport_transform(
