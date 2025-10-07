@@ -187,7 +187,7 @@ def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
 
     px_index: int = (v_px * fb.backbuffer.width + u_px) * fb.n_samples
     for sample_index in samples_survived_indices:
-        fb.backbuffer.data[px_index + sample_index] = final_color
+        fb.backbuffer.data[px_index + sample_index] = texture_color
 
     return True
 
@@ -437,7 +437,7 @@ def main() -> None:
     bmp_path: str = "test.bmp"
     obj_path: str = "test.obj"
 
-    n_samples_per_axis: int = 1
+    n_samples_per_axis: int = 2
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
