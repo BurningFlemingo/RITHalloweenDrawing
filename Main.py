@@ -2,39 +2,122 @@ import turtle
 import math
 import time
 from typing import NamedTuple
+from typing import Any
 
 WINDOW_WIDTH: int = 1920//2
 WINDOW_HEIGHT: int = 1080//2
 
 
 class Vec4(NamedTuple):
-    x: float
-    y: float
-    z: float
-    w: float
+    x: Any
+    y: Any
+    z: Any
+    w: Any
 
     def __add__(self, other):
-        return Vec4(*[a + b for a, b in zip(self, other)])
+        return type(self)(*[a + b for a, b in zip(self, other)])
 
     def __sub__(self, other):
-        return Vec4(*[a - b for a, b in zip(self, other)])
+        return type(self)(*[a - b for a, b in zip(self, other)])
 
     def __mul__(self, factor):
-        return Vec4(*[a * factor for a in self])
+        return type(self)(*[a * factor for a in self])
+
+    def __truediv__(self, factor):
+        return type(self)(*[a / factor for a in self])
+
+    def __floordiv__(self, factor):
+        return type(self)(*[a // factor for a in self])
+
+    def magnitude(self):
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2 + self.w**2)
+
+    def normalized(self):
+        return self / self.magnitude()
+
+
+class Vec3(NamedTuple):
+    x: Any
+    y: Any
+    z: Any
+
+    def __add__(self, other):
+        return type(self)(*[a + b for a, b in zip(self, other)])
+
+    def __sub__(self, other):
+        return type(self)(*[a - b for a, b in zip(self, other)])
+
+    def __mul__(self, factor):
+        return type(self)(*[(a * factor) for a in self])
+
+    def __truediv__(self, factor):
+        return type(self)(*[a / factor for a in self])
+
+    def __floordiv__(self, factor):
+        return type(self)(*[a // factor for a in self])
+
+    def magnitude(self):
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
+
+    def normalized(self):
+        return self / self.magnitude()
 
 
 class Vec2(NamedTuple):
-    x: float
-    y: float
+    x: Any
+    y: Any
 
     def __add__(self, other):
-        return Vec2(*[a + b for a, b in zip(self, other)])
+        return type(self)(*[a + b for a, b in zip(self, other)])
 
     def __sub__(self, other):
-        return Vec2(*[a - b for a, b in zip(self, other)])
+        return type(self)(*[a - b for a, b in zip(self, other)])
 
     def __mul__(self, factor):
-        return Vec2(*[a * factor for a in self])
+        return type(self)(*[(a * factor) for a in self])
+
+    def __truediv__(self, factor):
+        return type(self)(*[a / factor for a in self])
+
+    def __floordiv__(self, factor):
+        return type(self)(*[a // factor for a in self])
+
+    def magnitude(self):
+        return math.sqrt(self.x**2 + self.y**2)
+
+    def normalized(self):
+        return self / self.magnitude()
+
+
+class Mat4(NamedTuple):
+    row1: Vec4
+    row2: Vec4
+    row3: Vec4
+    row4: Vec4
+
+    def __mul__(self, other):
+        if isinstance(other, Mat4):
+            transposed = other.transposed()
+            rows: list[Vec4] = []
+            for row in self:
+                rows.append(Vec4(*[dot(row, col) for col in transposed]))
+            return Mat4(*rows)
+        else:
+            return Vec4(*[dot(row, other) for row in self])
+
+    def transposed(self):
+        return Mat4(
+            Vec4(self.row1.x, self.row2.x, self.row3.x, self.row4.x),
+            Vec4(self.row1.y, self.row2.y, self.row3.y, self.row4.y),
+            Vec4(self.row1.z, self.row2.z, self.row3.z, self.row4.z),
+            Vec4(self.row1.w, self.row2.w, self.row3.w, self.row4.w))
+
+
+def dot(v1, v2):
+    accumulated = 0
+    for a, b in zip(v1, v2):
+        accumulated += a * b
+    return accumulated
 
 
 class Buffer(NamedTuple):
@@ -58,13 +141,6 @@ class Framebuffer(NamedTuple):
     n_samples: int
 
 
-class Mat4(NamedTuple):
-    row1: Vec4
-    row2: Vec4
-    row3: Vec4
-    row4: Vec4
-
-
 class Vertex(NamedTuple):
     transform: Vec4
     normal: Vec4
@@ -86,17 +162,6 @@ class RasterCtx(NamedTuple):
     w1_bias: float
     w2_bias: float
     w3_bias: float
-
-
-def dot(v1: Vec4, v2: Vec4) -> float:
-    accumulated: float = 0
-    for a, b in zip(v1, v2):
-        accumulated += a * b
-    return accumulated
-
-
-def multiply(mat: Mat4, vec: Vec4) -> Vec4:
-    return Vec4(*[dot(row, vec) for row in mat])
 
 
 def is_covered_edge(edge: Vec4) -> bool:
@@ -217,12 +282,12 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
     # pre-dividing so inner loop isnt calculating this a ton for no reason
     p1 = Vertex(subpx_transform(p1.transform, n_subpx_per_axis),
                 p1.normal,
-                p1.texture_uv * (1/p1.transform.w))
+                p1.texture_uv / p1.transform.w)
     p2 = Vertex(subpx_transform(p2.transform, n_subpx_per_axis),
                 p2.normal,
-                p2.texture_uv * (1/p2.transform.w))
+                p2.texture_uv / p2.transform.w)
     p3 = Vertex(subpx_transform(p3.transform, n_subpx_per_axis),
-                p3.normal, p3.texture_uv * (1/p3.transform.w))
+                p3.normal, p3.texture_uv / p3.transform.w)
 
     edge1: Vec4 = p2.transform - p1.transform
     edge2: Vec4 = p3.transform - p2.transform
@@ -506,12 +571,11 @@ def main() -> None:
 
     (transforms, normals, texture_uvs) = load_obj(obj_path)
 
+    mvp_matrix: Mat4 = projection_matrix * model_matrix * \
+        x_rot_matrix * y_rot_matrix * z_rot_matrix
+
     for i in range(0, len(transforms)):
-        transforms[i] = multiply(z_rot_matrix, transforms[i])
-        transforms[i] = multiply(x_rot_matrix, transforms[i])
-        transforms[i] = multiply(y_rot_matrix, transforms[i])
-        transforms[i] = multiply(model_matrix, transforms[i])
-        transforms[i] = multiply(projection_matrix, transforms[i])
+        transforms[i] = mvp_matrix * transforms[i]
 
         transforms[i] = perspective_divide(transforms[i])
         transforms[i] = viewport_transform(
