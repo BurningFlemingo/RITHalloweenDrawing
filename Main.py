@@ -32,9 +32,6 @@ class Vec4(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2 + self.w**2)
 
-    def normalized(self):
-        return self / self.magnitude()
-
 
 class Vec3(NamedTuple):
     x: Any
@@ -59,9 +56,6 @@ class Vec3(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2)
 
-    def normalized(self):
-        return self / self.magnitude()
-
 
 class Vec2(NamedTuple):
     x: Any
@@ -85,43 +79,9 @@ class Vec2(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2)
 
-    def normalized(self):
-        return self / self.magnitude()
-
-
-def magnitude(vec):
-    accumulated = 0
-    for e in vec:
-        accumulated += e ** 2
-    return math.sqrt(accumulated)
-
 
 def normalize(vec):
-    return vec / magnitude(vec)
-
-
-class Mat4(NamedTuple):
-    row1: Vec4
-    row2: Vec4
-    row3: Vec4
-    row4: Vec4
-
-    def __mul__(self, other):
-        if isinstance(other, Mat4):
-            transposed = other.transposed()
-            rows: list[Vec4] = []
-            for row in self:
-                rows.append(Vec4(*[dot(row, col) for col in transposed]))
-            return Mat4(*rows)
-        else:
-            return Vec4(*[dot(row, other) for row in self])
-
-    def transposed(self):
-        return Mat4(
-            Vec4(self.row1.x, self.row2.x, self.row3.x, self.row4.x),
-            Vec4(self.row1.y, self.row2.y, self.row3.y, self.row4.y),
-            Vec4(self.row1.z, self.row2.z, self.row3.z, self.row4.z),
-            Vec4(self.row1.w, self.row2.w, self.row3.w, self.row4.w))
+    return vec / vec.magnitude()
 
 
 def dot(v1, v2):
@@ -137,6 +97,31 @@ def hadamard(v1, v2):
 
 def reflect(incoming, normal):
     return incoming - (normal * (2 * dot(normal, incoming)))
+
+
+class Mat4(NamedTuple):
+    row1: Vec4
+    row2: Vec4
+    row3: Vec4
+    row4: Vec4
+
+    def __mul__(self, other):
+        if isinstance(other, Mat4):
+            transposed = transpose(other)
+            rows: list[Vec4] = []
+            for row in self:
+                rows.append(Vec4(*[dot(row, col) for col in transposed]))
+            return Mat4(*rows)
+        else:
+            return Vec4(*[dot(row, other) for row in self])
+
+
+def transpose(mat: Mat4):
+    return Mat4(
+        Vec4(mat.row1.x, mat.row2.x, mat.row3.x, mat.row4.x),
+        Vec4(mat.row1.y, mat.row2.y, mat.row3.y, mat.row4.y),
+        Vec4(mat.row1.z, mat.row2.z, mat.row3.z, mat.row4.z),
+        Vec4(mat.row1.w, mat.row2.w, mat.row3.w, mat.row4.w))
 
 
 class Buffer(NamedTuple):
@@ -166,22 +151,13 @@ class Buffer(NamedTuple):
 
 
 class Framebuffer(NamedTuple):
-    backbuffer: Buffer
-    depth_buffer: Buffer
-    texture: Buffer
-    n_samples_per_axis: int
-    n_samples: int
-
-
-class Attributes(NamedTuple):
-    normal: Vec4
-    texture_uv: Vec2
-    position: Vec3
+    color_attachment: Buffer
+    depth_attachment: Buffer
 
 
 class Vertex(NamedTuple):
     transform: Vec4
-    attrib: Attributes
+    attrib: tuple
 
 
 class RasterCtx(NamedTuple):
@@ -213,9 +189,11 @@ def is_covered_edge(edge: Vec4) -> bool:
 
 def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (list[int], int, int):
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
-    n_samples_per_axis: int = fb.n_samples_per_axis
+    n_samples_per_axis: int = fb.depth_attachment.n_samples_per_axis
+    n_samples: int = n_samples_per_axis ** 2
 
-    px_index: int = (v_px * fb.depth_buffer.width + u_px) * fb.n_samples
+    px_index: int = (v_px * fb.depth_attachment.width +
+                     u_px) * n_samples
 
     accumulated_w1: int = 0
     accumulated_w2: int = 0
@@ -237,14 +215,14 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
             w3: int = det - w1 - w2
 
             if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
-                px_depth: float = det / (w1/p1.transform.w +
-                                         w2/p2.transform.w + w3/p3.transform.w)
+                interpolated_depth: float = (p1.transform.z *
+                                             w1 + p2.transform.z * w2 + p3.transform.z * w3) / det
 
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
 
-                if (px_depth <= fb.depth_buffer.data[depth_buffer_index]):
-                    fb.depth_buffer.data[depth_buffer_index] = px_depth
+                if (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
+                    fb.depth_attachment.data[depth_buffer_index] = interpolated_depth
                     samples_survived_indices.append(sample_index)
 
                     accumulated_w1 += w1
@@ -259,28 +237,28 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
-def interpolate_attributes(p1: Attributes, p2: Attributes, p3: Attributes, w1: float, w2: float, w3: float, px_depth: float) -> Attributes:
+def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple, w1: float, w2: float, w3: float, px_depth: float) -> tuple:
 
-    n_attributes: int = len(p1)
+    n_attributes: int = len(p1_attrib)
     attributes = []
     for attrib_index in range(0, n_attributes):
-        a1 = p1[attrib_index] * w1
-        a2 = p2[attrib_index] * w2
-        a3 = p3[attrib_index] * w3
-        interpolated: Vec2 = (a1 + a2 + a3) * px_depth
+        a1 = p1_attrib[attrib_index] * w1
+        a2 = p2_attrib[attrib_index] * w2
+        a3 = p3_attrib[attrib_index] * w3
+        interpolated = (a1 + a2 + a3) * px_depth
         attributes.append(interpolated)
 
-    return Attributes(*attributes)
+    return tuple(attributes)
 
 
-def fragment_shader(fb: Framebuffer, attrib: Attributes) -> Vec4:
-    normal, tex_uv, position = attrib
+def fragment_shader(uniforms: tuple, attributes: tuple) -> Vec4:
+    texture = uniforms
+    normal, tex_uv, position, light_pos = attributes
     ambient_strength: float = 0.0
     specular_strength: float = 0.5
     shininess: float = 32
 
     light_color: Vec3 = Vec3(1.0, 0.3, 1.0)
-    light_pos: Vec3 = Vec3(10, 0, 1)
 
     norm: float = normalize(normal)
 
@@ -298,14 +276,14 @@ def fragment_shader(fb: Framebuffer, attrib: Attributes) -> Vec4:
     spec: float = max(dot(norm, halfway), 0) ** shininess
     specular = light_color * (spec * specular_strength)
 
-    object_color: Vec3 = Vec3(*fb.texture.sampleUV(*tex_uv)[:3])
+    object_color: Vec3 = Vec3(*texture.sampleUV(*tex_uv)[:3])
     result: Vec3 = hadamard(
         ambient + diffuse + specular + Vec3(0.3, 0.3, 0.3), object_color)
 
     return Vec4(*result, 1.0)
 
 
-def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
+def shade_pixel(ctx: RasterCtx, uniforms: tuple, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
     samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
@@ -321,18 +299,20 @@ def shade_pixel(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     px_depth: float = 1.0 / (w1/p1.transform.w +
                              w2/p2.transform.w + w3/p3.transform.w)
 
-    interpolated_attributes: Attributes = interpolate_attributes(
+    interpolated_attributes: tuple = interpolate_attributes(
         p1.attrib, p2.attrib, p3.attrib, w1, w2, w3, px_depth)
-    color: Vec4 = fragment_shader(fb, interpolated_attributes)
+    color: Vec4 = fragment_shader(uniforms, interpolated_attributes)
     color = Vec4(
         min(max(color.x, 0.0), 1.0),
         min(max(color.y, 0.0), 1.0),
         min(max(color.z, 0.0), 1.0),
         min(max(color.w, 0.0), 1.0))
 
-    px_index: int = (v_px * fb.backbuffer.width + u_px) * fb.n_samples
+    n_samples: int = fb.color_attachment.n_samples_per_axis ** 2
+    px_index: int = (v_px * fb.color_attachment.width + u_px) * \
+        n_samples
     for sample_index in samples_survived_indices:
-        fb.backbuffer.data[px_index + sample_index] = color
+        fb.color_attachment.data[px_index + sample_index] = color
 
     return True
 
@@ -355,14 +335,11 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
 
-def attrib_pre_divide(p: Vertex) -> Attributes:
-    return Attributes(
-        p.attrib.normal / p.transform.w,
-        p.attrib.texture_uv / p.transform.w,
-        p.attrib.position / p.transform.w)
+def attrib_pre_divide(p: Vertex) -> tuple:
+    return tuple([attrib / p.transform.w for attrib in p.attrib])
 
 
-def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason
@@ -418,7 +395,7 @@ def rasterize_triangle(fb: Framebuffer, p1: Vertex, p2: Vertex, p3: Vertex) -> b
         row_w1: float = w1
         row_w2: float = w2
         for u_px in range(int(min_x_px), int(max_x_px)):
-            shade_pixel(ctx, u_px, v_px, w1, w2)
+            shade_pixel(ctx, uniforms, u_px, v_px, w1, w2)
 
             w1 += w1_px_step.x
             w2 += w2_px_step.x
@@ -599,30 +576,55 @@ def setup_turtle() -> None:
     turtle.pensize(1)
 
 
-def main() -> None:
-    bmp_path: str = "test.bmp"
-    obj_path: str = "test.obj"
+def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
+    texture, projection_matrix, world_matrix, rot_matrix, light_pos = uniforms
+    transforms, normals, texture_uvs = vertices
+    vertices: list[Vertex] = []
+    for i in range(0, len(transforms)):
+        # vertex shader
+        transform: Vec4 = world_matrix * transforms[i]
+        normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
 
+        attribs: tuple = (
+            normal, texture_uvs[i], Vec3(*transform[:3]), light_pos)
+
+        transform = projection_matrix * transform
+
+        transform = perspective_divide(transform)
+        transform = viewport_transform(
+            transform, WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        vertex: Vertex = Vertex(transform, attribs)
+        vertices.append(vertex)
+
+    fragment_uniforms: tuple = (texture)
+
+    for i in range(0, len(vertices), 3):
+        v1: Vertex = vertices[i]
+        v2: Vertex = vertices[i + 1]
+        v3: Vertex = vertices[i + 2]
+
+        rasterize_triangle(
+            framebuffer, fragment_uniforms, v1, v2, v3)
+
+
+def main() -> None:
     n_samples_per_axis: int = 2
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
     z_rot_angle: float = math.radians(125)
 
-    texture = load_bmp(bmp_path)
+    (transforms, normals, texture_uvs) = load_obj("test.obj")
 
-    backbuffer = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
-                        WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
+    house_texture = load_bmp("test.bmp")
+    missing_texture = load_bmp("Missing_Texture.bmp")
 
-    depth_buffer = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
-                          WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
+    color_attachment = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
+                              WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
-    framebuffer: Framebuffer = Framebuffer(
-        backbuffer, depth_buffer, texture, n_samples_per_axis, n_samples_per_axis ** 2)
-
-    if (framebuffer.backbuffer.n_samples_per_axis != framebuffer.depth_buffer.n_samples_per_axis):
-        print("Backbuffer sample count is different than depth buffer sample count, stopping rasterization.")
-        return False
+    depth_attachment = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
+                              WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
     far_plane: float = 100
     near_plane: float = 0.001
@@ -638,6 +640,12 @@ def main() -> None:
     model_matrix: Mat4 = Mat4(
         Vec4(1, 0, 0, 0),
         Vec4(0, 1, 0, 0),
+        Vec4(0, 0, 1, 3),
+        Vec4(0, 0, 0, 1))
+
+    model_matrix_2: Mat4 = Mat4(
+        Vec4(1, 0, 0, 0),
+        Vec4(0, 1, 0, 0.1),
         Vec4(0, 0, 1, 3),
         Vec4(0, 0, 0, 1))
 
@@ -657,49 +665,28 @@ def main() -> None:
         Vec4(0, 0, 1, 0),
         Vec4(0, 0, 0, 1))
 
-    (transforms, normals, texture_uvs) = load_obj(obj_path)
-
     rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
     world_matrix: Mat4 = model_matrix * rot_matrix
+    light_pos: Vec3 = Vec3(10, 0, 1)
 
-    vertices: list[Vertex] = []
-    for i in range(0, len(transforms)):
-        # vertex shader
-        transform: Vec4 = world_matrix * transforms[i]
-        normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
-        attribs: Attributes = Attributes(
-            normal, texture_uvs[i], Vec3(*transform[:3]))
-
-        transform = projection_matrix * transform
-
-        transform = perspective_divide(transform)
-        transform = viewport_transform(
-            transform, WINDOW_WIDTH, WINDOW_HEIGHT)
-
-        vertex: Vertex = Vertex(transform, attribs)
-        vertices.append(vertex)
-
-    n_triangles_rasterized: int = 0
-    start_time = time.time()
-    for i in range(0, len(vertices), 3):
-        v1: Vertex = vertices[i]
-        v2: Vertex = vertices[i + 1]
-        v3: Vertex = vertices[i + 2]
-
-        triangle_was_rasterized: bool = rasterize_triangle(
-            framebuffer, v1, v2, v3)
-
-        if triangle_was_rasterized:
-            n_triangles_rasterized += 1
-
-    end_time = time.time()
-    print("Rasterization took", end_time - start_time, "seconds")
+    vertices: tuple[list] = (transforms, normals, texture_uvs)
+    uniforms: tuple = (house_texture, projection_matrix,
+                       world_matrix, rot_matrix, light_pos)
+    framebuffer: Framebuffer = Framebuffer(
+        color_attachment, depth_attachment)
 
     setup_turtle()
-    resolve_buffer(framebuffer.backbuffer)
-    present_backbuffer(framebuffer.backbuffer)
+    draw(framebuffer, vertices, uniforms)
 
-    print(n_triangles_rasterized, "triangles were rasterized")
+    world_matrix = model_matrix_2 * rot_matrix
+
+    uniforms: tuple = (missing_texture, projection_matrix,
+                       world_matrix, rot_matrix, light_pos)
+
+    draw(framebuffer, vertices, uniforms)
+
+    resolve_buffer(framebuffer.color_attachment)
+    present_backbuffer(framebuffer.color_attachment)
 
     print("DONE!!!")
 
