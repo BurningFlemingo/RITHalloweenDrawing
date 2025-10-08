@@ -294,7 +294,8 @@ def fragment_shader(fb: Framebuffer, attrib: Attributes) -> Vec4:
     diffuse_strength: float = max(dot(light_dir, norm), 0)
     diffuse: Vec3 = light_color * diffuse_strength
 
-    spec: float = max(dot(light_dir, view_dir), 0) ** shininess
+    halfway: Vec3 = normalize(view_dir + light_dir)
+    spec: float = max(dot(norm, halfway), 0) ** shininess
     specular = light_color * (spec * specular_strength)
 
     object_color: Vec3 = Vec3(*fb.texture.sampleUV(*tex_uv)[:3])
@@ -666,7 +667,8 @@ def main() -> None:
         # vertex shader
         transform: Vec4 = world_matrix * transforms[i]
         normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
-        attribs: Attributes = Attributes(normal, texture_uvs[i], transform)
+        attribs: Attributes = Attributes(
+            normal, texture_uvs[i], Vec3(*transform[:3]))
 
         transform = projection_matrix * transform
 
