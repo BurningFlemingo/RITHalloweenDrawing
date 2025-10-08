@@ -160,6 +160,17 @@ class Vertex(NamedTuple):
     attrib: tuple
 
 
+class Model(NamedTuple):
+    vertices: tuple[Vec4, Vec3, Vec2]
+    texture: Buffer
+
+
+class Material(NamedTuple):
+    ambient_strength: float
+    specular_strength: float
+    shininess: float
+
+
 class RasterCtx(NamedTuple):
     fb: Framebuffer
 
@@ -221,7 +232,10 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
 
+                # print(v_px, u_px, depth_buffer_index)
+
                 if (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
+
                     fb.depth_attachment.data[depth_buffer_index] = interpolated_depth
                     samples_survived_indices.append(sample_index)
 
@@ -252,11 +266,8 @@ def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple,
 
 
 def fragment_shader(uniforms: tuple, attributes: tuple) -> Vec4:
-    texture = uniforms
+    texture, material = uniforms
     normal, tex_uv, position, light_pos = attributes
-    ambient_strength: float = 0.0
-    specular_strength: float = 0.5
-    shininess: float = 32
 
     light_color: Vec3 = Vec3(1.0, 0.3, 1.0)
 
@@ -264,17 +275,16 @@ def fragment_shader(uniforms: tuple, attributes: tuple) -> Vec4:
 
     view_dir: Vec3 = normalize(position * -1)
 
-    # add support for uniforms
     light_dir: Vec3 = normalize(light_pos - position)
 
-    ambient: Vec3 = light_color * ambient_strength
+    ambient: Vec3 = light_color * material.ambient_strength
 
     diffuse_strength: float = max(dot(light_dir, norm), 0)
     diffuse: Vec3 = light_color * diffuse_strength
 
     halfway: Vec3 = normalize(view_dir + light_dir)
-    spec: float = max(dot(norm, halfway), 0) ** shininess
-    specular = light_color * (spec * specular_strength)
+    spec: float = max(dot(norm, halfway), 0) ** material.shininess
+    specular = light_color * (spec * material.specular_strength)
 
     object_color: Vec3 = Vec3(*texture.sampleUV(*tex_uv)[:3])
     result: Vec3 = hadamard(
@@ -301,6 +311,7 @@ def shade_pixel(ctx: RasterCtx, uniforms: tuple, u_px: int, v_px: int, w1: int, 
 
     interpolated_attributes: tuple = interpolate_attributes(
         p1.attrib, p2.attrib, p3.attrib, w1, w2, w3, px_depth)
+
     color: Vec4 = fragment_shader(uniforms, interpolated_attributes)
     color = Vec4(
         min(max(color.x, 0.0), 1.0),
@@ -374,6 +385,9 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
     max_y_px: int = math.ceil(max(
         max(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
 
+    if (min_x_px < 0 or max_x_px > WINDOW_WIDTH or min_y_px < 0 or max_y_px > WINDOW_HEIGHT):
+        return False
+
     w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,
                             int(edge2.x) * n_subpx_per_axis)
     w2_px_step: Vec2 = Vec2(int(-edge3.y) * n_subpx_per_axis,
@@ -391,10 +405,10 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
-    for v_px in range(int(min_y_px), int(max_y_px)):
+    for v_px in range(min_y_px, max_y_px):
         row_w1: float = w1
         row_w2: float = w2
-        for u_px in range(int(min_x_px), int(max_x_px)):
+        for u_px in range(min_x_px, max_x_px):
             shade_pixel(ctx, uniforms, u_px, v_px, w1, w2)
 
             w1 += w1_px_step.x
@@ -429,7 +443,8 @@ def load_bmp(path: str) -> Buffer:
             loaded_bmp[46:50], byteorder="little")
 
         if (compression_method != 0 or n_colors_in_pallet != 0 or bpp <= 16):
-            print("BMP is wrong.")
+            print(f"{path} is formatted wrong: compression_method: {
+                  compression_method}, n_colors_in_pallet: {n_colors_in_pallet}, bpp: {bpp}")
 
         row_size: int = ((bpp * width + 31) // 32) * 4  # padding included
         pixel_array_size: int = row_size * height
@@ -548,7 +563,7 @@ def present_backbuffer(backbuffer: Buffer) -> None:
             px_index = (y_px * backbuffer.width + x_px) * n_samples
 
             px_color: Vec4 = backbuffer.data[px_index]
-            px_color = quantize_color(px_color, 32)
+            px_color = quantize_color(px_color, 16)
             color_changed: bool = px_color != pen_color
 
             if (color_changed):
@@ -577,12 +592,13 @@ def setup_turtle() -> None:
 
 
 def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
-    texture, projection_matrix, world_matrix, rot_matrix, light_pos = uniforms
+    print("draw call started")
+    texture, material, projection_matrix, model_matrix, rot_matrix, light_pos = uniforms
     transforms, normals, texture_uvs = vertices
     vertices: list[Vertex] = []
     for i in range(0, len(transforms)):
         # vertex shader
-        transform: Vec4 = world_matrix * transforms[i]
+        transform: Vec4 = model_matrix * rot_matrix * transforms[i]
         normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
 
         attribs: tuple = (
@@ -597,7 +613,7 @@ def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
         vertex: Vertex = Vertex(transform, attribs)
         vertices.append(vertex)
 
-    fragment_uniforms: tuple = (texture)
+    fragment_uniforms: tuple = (texture, material)
 
     for i in range(0, len(vertices), 3):
         v1: Vertex = vertices[i]
@@ -615,10 +631,8 @@ def main() -> None:
     y_rot_angle: float = math.radians(0)
     z_rot_angle: float = math.radians(125)
 
-    (transforms, normals, texture_uvs) = load_obj("test.obj")
-
-    house_texture = load_bmp("test.bmp")
-    missing_texture = load_bmp("Missing_Texture.bmp")
+    cube: Model = Model(load_obj("pumpkin.obj"), load_bmp("pumpkin.bmp"))
+    house: Model = Model(load_obj("test.obj"), load_bmp("test.bmp"))
 
     color_attachment = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                               WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
@@ -643,10 +657,11 @@ def main() -> None:
         Vec4(0, 0, 1, 3),
         Vec4(0, 0, 0, 1))
 
+    light_pos: Vec3 = Vec3(-1.0, 0, 0.0)
     model_matrix_2: Mat4 = Mat4(
-        Vec4(1, 0, 0, 0),
-        Vec4(0, 1, 0, 0.1),
-        Vec4(0, 0, 1, 3),
+        Vec4(0.1, 0, 0, -0.5),
+        Vec4(0, 0.1, 0, 0),
+        Vec4(0, 0, 0.1, 2.2),
         Vec4(0, 0, 0, 1))
 
     x_rot_matrix: Mat4 = Mat4(
@@ -666,25 +681,44 @@ def main() -> None:
         Vec4(0, 0, 0, 1))
 
     rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
-    world_matrix: Mat4 = model_matrix * rot_matrix
-    light_pos: Vec3 = Vec3(10, 0, 1)
 
-    vertices: tuple[list] = (transforms, normals, texture_uvs)
-    uniforms: tuple = (house_texture, projection_matrix,
-                       world_matrix, rot_matrix, light_pos)
+    house_mat: Material = Material(0.2, 0.5, 32)
+    light_mat: Material = Material(0.7, 0.0, 32)
+
+    uniforms: tuple = (house.texture, house_mat, projection_matrix,
+                       model_matrix, rot_matrix, light_pos)
     framebuffer: Framebuffer = Framebuffer(
         color_attachment, depth_attachment)
 
+    draw(framebuffer, house.vertices, uniforms)
+
+    x_rot_angle: float = math.radians(0)
+    y_rot_angle: float = math.radians(-25)
+    z_rot_angle: float = math.radians(0)
+
+    x_rot_matrix: Mat4 = Mat4(
+        Vec4(1, 0, 0, 0),
+        Vec4(0, math.cos(x_rot_angle), -math.sin(x_rot_angle), 0),
+        Vec4(0, math.sin(x_rot_angle), math.cos(x_rot_angle), 0),
+        Vec4(0, 0, 0, 1))
+    y_rot_matrix: Mat4 = Mat4(
+        Vec4(math.cos(y_rot_angle), 0, math.sin(y_rot_angle), 0),
+        Vec4(0, 1, 0, 0),
+        Vec4(-math.sin(y_rot_angle), 0, math.cos(y_rot_angle), 0),
+        Vec4(0, 0, 0, 1))
+    z_rot_matrix: Mat4 = Mat4(
+        Vec4(math.cos(z_rot_angle), math.sin(z_rot_angle), 0, 0),
+        Vec4(-math.sin(z_rot_angle), math.cos(z_rot_angle), 0, 0),
+        Vec4(0, 0, 1, 0),
+        Vec4(0, 0, 0, 1))
+
+    rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
+
+    uniforms: tuple = (cube.texture, house_mat, projection_matrix,
+                       model_matrix_2, rot_matrix, light_pos)
+    draw(framebuffer, cube.vertices, uniforms)
+
     setup_turtle()
-    draw(framebuffer, vertices, uniforms)
-
-    world_matrix = model_matrix_2 * rot_matrix
-
-    uniforms: tuple = (missing_texture, projection_matrix,
-                       world_matrix, rot_matrix, light_pos)
-
-    draw(framebuffer, vertices, uniforms)
-
     resolve_buffer(framebuffer.color_attachment)
     present_backbuffer(framebuffer.color_attachment)
 
