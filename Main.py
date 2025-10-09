@@ -107,6 +107,17 @@ def reflect(incoming, normal):
     return incoming - (normal * (2 * dot(normal, incoming)))
 
 
+def det2x2(a: Vec2, b: Vec2) -> float:
+    return (a.x * b.y) - (b.x * a.y)
+
+
+def det3x3(row1: Vec3, row2: Vec3, row3: Vec3) -> float:
+    return \
+        row1.x * det2x2(Vec2(row2.y, row2.z), Vec2(row3.y, row3.z)) - \
+        row1.y * det2x2(Vec2(row2.x, row2.z), Vec2(row3.x, row3.z)) + \
+        row1.z * det2x2(Vec2(row2.x, row2.y), Vec2(row3.x, row3.y))
+
+
 class Mat4(NamedTuple):
     row1: Vec4
     row2: Vec4
@@ -182,15 +193,14 @@ def make_rotor(from_vec: Vec3, to_vec: Vec3, theta: float = None):
     return Rot3(scalar_part, *wedge_part)
 
 
-def make_rotor_pyr(pyr: Vec3) -> Rot3:
+def make_euler_rotor(euler_angles: Vec3) -> Rot3:
     """
-        pyr -> pitch, yaw, roll -> x axis, y axis, z axis
-        the components in pyz correspond to radians around that axis.
+        x, y, z angles are interpreted in radians.
     """
     return \
-        make_rotor(Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 1.0), pyr.x) * \
-        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0), pyr.y) * \
-        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), pyr.z)
+        make_rotor(Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 1.0), euler_angles.x) * \
+        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0), euler_angles.y) * \
+        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), euler_angles.z)
 
 
 def reverse(r: Rot3):
@@ -205,7 +215,7 @@ def reverse(r: Rot3):
     )
 
 
-def rotate(v: Vec3, r: Rot3) -> Vec3:
+def rotate_vec(v: Vec3, r: Rot3) -> Vec3:
     """
         https://jacquesheunis.com/post/rotors/#eqn:geometric-product-complete
     """
@@ -222,14 +232,32 @@ def rotate(v: Vec3, r: Rot3) -> Vec3:
     )
 
 
-def make_rotation_matrix(r: Rot3) -> Mat4:
-    x_basis: Vec3 = rotate(Vec3(1.0, 0.0, 0.0), r)
-    y_basis: Vec3 = rotate(Vec3(0.0, 1.0, 0.0), r)
-    z_basis: Vec3 = rotate(Vec3(0.0, 0.0, 1.0), r)
+def make_rotation_matrix(rotor: Rot3) -> Mat4:
+    x_basis: Vec3 = rotate_vec(Vec3(1.0, 0.0, 0.0), rotor)
+    y_basis: Vec3 = rotate_vec(Vec3(0.0, 1.0, 0.0), rotor)
+    z_basis: Vec3 = rotate_vec(Vec3(0.0, 0.0, 1.0), rotor)
     return Mat4(
         Vec4(x_basis.x, y_basis.x, z_basis.x, 0.0),
         Vec4(x_basis.y, y_basis.y, z_basis.y, 0.0),
         Vec4(x_basis.z, y_basis.z, z_basis.z, 0.0),
+        Vec4(0.0, 0.0, 0.0, 1.0)
+    )
+
+
+def make_translation_matrix(translation: Vec3) -> Mat4:
+    return Mat4(
+        Vec4(1.0, 0.0, 0.0, translation.x),
+        Vec4(0.0, 1.0, 0.0, translation.y),
+        Vec4(0.0, 0.0, 1.0, translation.z),
+        Vec4(0.0, 0.0, 0.0, 1.0)
+    )
+
+
+def make_scale_matrix(scalars: Vec3) -> Mat4:
+    return Mat4(
+        Vec4(scalars.x, 0.0, 0.0, 0),
+        Vec4(0.0, scalars.y, 0.0, 0),
+        Vec4(0.0, 0.0, scalars.z, 0),
         Vec4(0.0, 0.0, 0.0, 1.0)
     )
 
@@ -265,13 +293,19 @@ class Framebuffer(NamedTuple):
     depth_attachment: Buffer
 
 
+class Transform(NamedTuple):
+    pos: Vec3  # position
+    rot: Rot3  # rotor
+    scale: Vec3
+
+
 class Vertex(NamedTuple):
-    transform: Vec4
+    pos: Vec4
     attrib: tuple
 
 
 class Model(NamedTuple):
-    vertices: tuple[Vec4, Vec3, Vec2]
+    vertices: tuple[Vec3, Vec3, Vec2]
     texture: Buffer
 
 
@@ -296,6 +330,43 @@ class RasterCtx(NamedTuple):
     w1_bias: float
     w2_bias: float
     w3_bias: float
+
+
+def make_projection_matrix(fov: float, ar: float, near_plane: float, far_plane: float) -> Mat4:
+    return Mat4(
+        Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
+        Vec4(0, 1/math.tan(fov/2), 0, 0),
+        Vec4(0, 0, far_plane/(far_plane - near_plane), -
+             (far_plane * near_plane)/(far_plane - near_plane)),
+        Vec4(0, 0, 1, 0))
+
+
+def make_lookat_matrix(eye: Vec3, target: Vec3, up: Vec3) -> Mat4:
+    z_basis: Vec3 = normalize(target - eye)
+    x_basis: Vec3 = normalize(cross(up, z_basis))
+    y_basis: Vec3 = normalize(cross(z_basis, x_basis))
+    return Mat4(
+        Vec4(x_basis.x, x_basis.y, x_basis.z, -dot(x_basis, eye)),
+        Vec4(y_basis.x, y_basis.y, y_basis.z, -dot(y_basis, eye)),
+        Vec4(z_basis.x, z_basis.y, z_basis.z, -dot(z_basis, eye)),
+        Vec4(0.0, 0.0, 0.0, 1.0),
+    )
+
+
+def make_model_matrix(t: Transform) -> Mat4:
+    return make_translation_matrix(t.pos) * make_rotation_matrix(t.rot) * make_scale_matrix(t.scale)
+
+
+def make_normal_matrix(model_matrix: Mat4) -> Mat4:
+    """
+        Doesnt work for non-uniform scaled model matrices
+    """
+    return Mat4(
+        Vec4(*model_matrix.row1[:3], 0),
+        Vec4(*model_matrix.row2[:3], 0),
+        Vec4(*model_matrix.row3[:3], 0),
+        Vec4(0, 0, 0, 1),
+    )
 
 
 def is_covered_edge(edge: Vec4) -> bool:
@@ -336,8 +407,8 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
             w3: int = det - w1 - w2
 
             if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
-                interpolated_depth: float = (p1.transform.z *
-                                             w1 + p2.transform.z * w2 + p3.transform.z * w3) / det
+                interpolated_depth: float = (p1.pos.z *
+                                             w1 + p2.pos.z * w2 + p3.pos.z * w3) / det
 
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
@@ -416,8 +487,8 @@ def shade_pixel(ctx: RasterCtx, uniforms: tuple, u_px: int, v_px: int, w1: int, 
     w1 = accumulated_w1 / (n_surviving_samples * det)
     w2 = accumulated_w2 / (n_surviving_samples * det)
     w3 = 1.0 - w1 - w2
-    px_depth: float = 1.0 / (w1/p1.transform.w +
-                             w2/p2.transform.w + w3/p3.transform.w)
+    px_depth: float = 1.0 / (w1/p1.pos.w +
+                             w2/p2.pos.w + w3/p3.pos.w)
 
     interpolated_attributes: tuple = interpolate_attributes(
         p1.attrib, p2.attrib, p3.attrib, w1, w2, w3, px_depth)
@@ -457,7 +528,7 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
 
 
 def attrib_pre_divide(p: Vertex) -> tuple:
-    return tuple([attrib / p.transform.w for attrib in p.attrib])
+    return tuple([attrib / p.pos.w for attrib in p.attrib])
 
 
 def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
@@ -465,18 +536,18 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason
     p1 = Vertex(
-        subpx_transform(p1.transform, n_subpx_per_axis),
+        subpx_transform(p1.pos, n_subpx_per_axis),
         attrib_pre_divide(p1))
     p2 = Vertex(
-        subpx_transform(p2.transform, n_subpx_per_axis),
+        subpx_transform(p2.pos, n_subpx_per_axis),
         attrib_pre_divide(p2))
     p3 = Vertex(
-        subpx_transform(p3.transform, n_subpx_per_axis),
+        subpx_transform(p3.pos, n_subpx_per_axis),
         attrib_pre_divide(p3))
 
-    edge1: Vec4 = p2.transform - p1.transform
-    edge2: Vec4 = p3.transform - p2.transform
-    edge3: Vec4 = p1.transform - p3.transform
+    edge1: Vec4 = p2.pos - p1.pos
+    edge2: Vec4 = p3.pos - p2.pos
+    edge3: Vec4 = p1.pos - p3.pos
 
     w1_bias: int = 1 if is_covered_edge(edge2) else 0
     w2_bias: int = 1 if is_covered_edge(edge3) else 0
@@ -487,13 +558,13 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
         return False
 
     min_x_px: int = math.floor(min(
-        min(p1.transform.x, p2.transform.x), p3.transform.x) / n_subpx_per_axis)
+        min(p1.pos.x, p2.pos.x), p3.pos.x) / n_subpx_per_axis)
     max_x_px: int = math.ceil(max(
-        max(p1.transform.x, p2.transform.x), p3.transform.x) / n_subpx_per_axis)
+        max(p1.pos.x, p2.pos.x), p3.pos.x) / n_subpx_per_axis)
     min_y_px: int = math.floor(min(
-        min(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
+        min(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
     max_y_px: int = math.ceil(max(
-        max(p1.transform.y, p2.transform.y), p3.transform.y) / n_subpx_per_axis)
+        max(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
 
     if (min_x_px < 0 or max_x_px > WINDOW_WIDTH or min_y_px < 0 or max_y_px > WINDOW_HEIGHT):
         return False
@@ -506,8 +577,8 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
     initial_uv: Vec4 = Vec4(min_x_px * n_subpx_per_axis,
                             min_y_px * n_subpx_per_axis, 0, 1)
 
-    v5: Vec4 = initial_uv - p2.transform
-    v6: Vec4 = initial_uv - p3.transform
+    v5: Vec4 = initial_uv - p2.pos
+    v6: Vec4 = initial_uv - p3.pos
 
     w1: int = (int(edge2.x) * int(v5.y)) - (int(edge2.y) * int(v5.x))
     w2: int = (int(edge3.x) * int(v6.y)) - (int(edge3.y) * int(v6.x))
@@ -599,13 +670,13 @@ def load_bmp(path: str) -> Buffer:
         return Buffer(pixels, width, height, 1)
 
 
-def load_obj(path: str) -> (list[Vec4], list[Vec4], list[Vec2]):
-    unique_transforms: list[Vec4] = []
-    unique_normals: list[Vec4] = []
+def load_obj(path: str) -> (list[Vec3], list[Vec3], list[Vec2]):
+    unique_transforms: list[Vec3] = []
+    unique_normals: list[Vec3] = []
     unique_tex_uvs: list[Vec2] = []
 
-    transforms: list[Vec4] = []
-    normals: list[Vec4] = []
+    transforms: list[Vec3] = []
+    normals: list[Vec3] = []
     tex_uvs: list[Vec2] = []
     with open(path) as obj:
         for line in obj:
@@ -619,17 +690,18 @@ def load_obj(path: str) -> (list[Vec4], list[Vec4], list[Vec2]):
                 continue
             elif (id == 'v'):
                 # -z to do right-handed to left-handed coord system change
-                transform: Vec4 = Vec4(float(items[1]), float(
-                    items[2]), -float(items[3]), 1.0)
+                transform: Vec3 = Vec3(float(items[1]), float(
+                    items[2]), -float(items[3]))
                 unique_transforms.append(transform)
+            elif (id == "vn"):
+                # -z to do right-handed to left-handed coord system change
+                normal: Vec3 = Vec3(float(items[1]), float(
+                    items[2]), -float(items[3]))
+                unique_normals.append(normal)
             elif (id == "vt"):
                 tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
                 unique_tex_uvs.append(tex_uv)
-            elif (id == "vn"):
-                # -z to do right-handed to left-handed coord system change
-                normal: Vec4 = Vec4(float(items[1]), float(
-                    items[2]), -float(items[3]), 1.0)
-                unique_normals.append(normal)
+
             elif (id == "f"):
                 atribs: list[list[int]] = [
                     [int(attribute_index) - 1 for attribute_index in vertex.split("/")] for vertex in items[1:]]
@@ -692,6 +764,11 @@ def present_backbuffer(backbuffer: Buffer) -> None:
     print("Backbuffer presentation took", end_time - start_time, "seconds")
 
 
+def clear_buffer(buffer: Buffer, clear_value: Any) -> None:
+    for i in range(0, len(buffer.data)):
+        buffer.data[i] = clear_value
+
+
 def setup_turtle() -> None:
     turtle.setup(width=WINDOW_WIDTH, height=WINDOW_HEIGHT)
     turtle.setworldcoordinates(0, 0, WINDOW_WIDTH - 1, WINDOW_HEIGHT - 1)
@@ -703,13 +780,15 @@ def setup_turtle() -> None:
 
 def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
     print("draw call started")
-    texture, material, projection_matrix, model_matrix, rot_matrix, light_pos = uniforms
+    texture, material, model_matrix, normal_matrix, view_matrix, projection_matrix, light_pos = uniforms
     transforms, normals, texture_uvs = vertices
     vertices: list[Vertex] = []
     for i in range(0, len(transforms)):
         # vertex shader
-        transform: Vec4 = model_matrix * rot_matrix * transforms[i]
-        normal: Vec3 = Vec3(*(rot_matrix * normals[i])[:3])
+        transform: Vec4 = view_matrix * \
+            model_matrix * Vec4(*transforms[i], 1.0)
+
+        normal: Vec4 = normal_matrix * Vec4(*normals[i], 1.0)
 
         attribs: tuple = (
             normal, texture_uvs[i], Vec3(*transform[:3]), light_pos)
@@ -737,7 +816,7 @@ def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
 def main() -> None:
     n_samples_per_axis: int = 2
 
-    x_rot_angle: float = math.radians(60)
+    x_rot_angle: float = math.radians(90)
     y_rot_angle: float = math.radians(0)
     z_rot_angle: float = math.radians(-135)
 
@@ -750,50 +829,37 @@ def main() -> None:
     depth_attachment = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                               WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
-    far_plane: float = 100
-    near_plane: float = 0.001
-    fov: float = math.radians(90/2)
-    ar: float = WINDOW_WIDTH / WINDOW_HEIGHT
-    projection_matrix: Mat4 = Mat4(
-        Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
-        Vec4(0, 1/math.tan(fov/2), 0, 0),
-        Vec4(0, 0, far_plane/(far_plane - near_plane), -
-             (far_plane * near_plane)/(far_plane - near_plane)),
-        Vec4(0, 0, 1, 0))
-
-    model_matrix: Mat4 = Mat4(
-        Vec4(1, 0, 0, 0),
-        Vec4(0, 1, 0, 0),
-        Vec4(0, 0, 1, 4),
-        Vec4(0, 0, 0, 1))
-
-    light_pos: Vec3 = Vec3(-1.0, 0, 0.0)
-    model_matrix_2: Mat4 = Mat4(
-        Vec4(0.1, 0, 0, -0.5),
-        Vec4(0, 0.1, 0, 0),
-        Vec4(0, 0, 0.1, 2.2),
-        Vec4(0, 0, 0, 1))
-
-    rot_matrix: Mat4 = make_rotation_matrix(
-        make_rotor_pyr(Vec3(x_rot_angle, y_rot_angle, z_rot_angle)))
-
-    house_mat: Material = Material(0.0, 1.0, 32)
-    light_mat: Material = Material(0.7, 0.0, 32)
-
-    uniforms: tuple = (house.texture, house_mat, projection_matrix,
-                       model_matrix, rot_matrix, light_pos)
-    framebuffer: Framebuffer = Framebuffer(
-        color_attachment, depth_attachment)
-
-    draw(framebuffer, house.vertices, uniforms)
-
-    # uniforms: tuple = (cube.texture, house_mat, projection_matrix,
-    #                    model_matrix_2, rot_matrix, light_pos)
-    # draw(framebuffer, cube.vertices, uniforms)
-
     setup_turtle()
-    resolve_buffer(framebuffer.color_attachment)
-    present_backbuffer(framebuffer.color_attachment)
+    while True:
+        clear_buffer(depth_attachment, float("inf"))
+        clear_buffer(color_attachment, Vec4(0.1, 0.1, 0.1, 1.0))
+
+        y_rot_angle += 30
+        transform: Transform = Transform(pos=Vec3(0, 0, 4), rot=make_euler_rotor(
+            Vec3(x_rot_angle, y_rot_angle, z_rot_angle)), scale=Vec3(1, 1, 1))
+
+        model_matrix: Mat4 = make_model_matrix(transform)
+        normal_matrix: Mat4 = make_normal_matrix(model_matrix)
+
+        view_matrix: Mat4 = make_lookat_matrix(
+            Vec3(1.5, 4, -5), Vec3(0, 0, 2), Vec3(0, 1, 0))
+
+        projection_matrix: Mat4 = make_projection_matrix(
+            math.radians(90/2), WINDOW_WIDTH / WINDOW_HEIGHT, 0.001, 100)
+
+        light_pos: Vec3 = Vec3(-1.0, 0, 0.0)
+
+        house_mat: Material = Material(0.0, 1.0, 32)
+
+        uniforms: tuple = (house.texture, house_mat, model_matrix,
+                           normal_matrix, view_matrix, projection_matrix, light_pos)
+        framebuffer: Framebuffer = Framebuffer(
+            color_attachment, depth_attachment)
+
+        draw(framebuffer, house.vertices, uniforms)
+
+        resolve_buffer(framebuffer.color_attachment)
+        present_backbuffer(framebuffer.color_attachment)
 
     print("DONE!!!")
 
