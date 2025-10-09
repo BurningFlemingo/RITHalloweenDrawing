@@ -310,9 +310,18 @@ class Model(NamedTuple):
 
 
 class Material(NamedTuple):
-    ambient_strength: float
-    specular_strength: float
+    diffuse: Buffer
+    specular: Buffer
     shininess: float
+
+class PointLight(NamedTuple):
+    pos: Vec3
+
+    linear_att: float
+    quadratic_att: float
+
+    color: Vec3 # used as the ambient and diffuse color
+    specular: Vec3
 
 
 class RasterCtx(NamedTuple):
@@ -447,29 +456,29 @@ def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple,
 
 
 def fragment_shader(uniforms: tuple, attributes: tuple) -> Vec4:
-    texture, material = uniforms
-    normal, tex_uv, position, light_pos = attributes
+    material, light = uniforms
+    normal, tex_uv, pos = attributes
 
-    light_color: Vec3 = Vec3(1.0, 0.3, 1.0)
+    norm: Vec3 = normalize(normal)
 
-    norm: float = normalize(normal)
+    view_dir: Vec3 = normalize(pos * -1)
 
-    view_dir: Vec3 = normalize(position * -1)
+    light_dir: Vec3 = light.pos - pos
+    light_distance: float = light_dir.magnitude()
+    light_dir = normalize(light_dir)
+    
+    attenuation: float = 1.0 / (1.0 + light.linear_att * light_distance + (light.quadratic_att * light_distance ** 2))
 
-    light_dir: Vec3 = normalize(light_pos - position)
-
-    ambient: Vec3 = light_color * material.ambient_strength
+    ambient: Vec3 = hadamard(light.color, material.diffuse.sampleUV(*tex_uv) * 0.2)
 
     diffuse_strength: float = max(dot(light_dir, norm), 0)
-    diffuse: Vec3 = light_color * diffuse_strength
+    diffuse: Vec3 = hadamard(light.color, material.diffuse.sampleUV(*tex_uv) *  diffuse_strength)
 
     halfway: Vec3 = normalize(view_dir + light_dir)
     spec: float = max(dot(norm, halfway), 0) ** material.shininess
-    specular = light_color * (spec * material.specular_strength)
+    specular = hadamard(light.specular, (material.specular.sampleUV(*tex_uv) * spec))
 
-    object_color: Vec3 = Vec3(*texture.sampleUV(*tex_uv)[:3])
-    result: Vec3 = hadamard(
-        ambient + diffuse + specular + Vec3(0.3, 0.3, 0.3), object_color)
+    result: Vec3 = (ambient + diffuse + specular) * attenuation
 
     return Vec4(*result, 1.0)
 
@@ -780,29 +789,29 @@ def setup_turtle() -> None:
 
 def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
     print("draw call started")
-    texture, material, model_matrix, normal_matrix, view_matrix, projection_matrix, light_pos = uniforms
+    material, model_matrix, normal_matrix, view_matrix, projection_matrix, light = uniforms
     transforms, normals, texture_uvs = vertices
     vertices: list[Vertex] = []
     for i in range(0, len(transforms)):
         # vertex shader
-        transform: Vec4 = view_matrix * \
+        position: Vec4 = view_matrix * \
             model_matrix * Vec4(*transforms[i], 1.0)
 
-        normal: Vec4 = normal_matrix * Vec4(*normals[i], 1.0)
+        normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normals[i], 1.0))[:3])
 
         attribs: tuple = (
-            normal, texture_uvs[i], Vec3(*transform[:3]), light_pos)
+            normal, texture_uvs[i], Vec3(*position[:3]))
 
-        transform = projection_matrix * transform
+        position = projection_matrix * position
 
-        transform = perspective_divide(transform)
-        transform = viewport_transform(
-            transform, WINDOW_WIDTH, WINDOW_HEIGHT)
+        position = perspective_divide(position)
+        position = viewport_transform(
+            position, WINDOW_WIDTH, WINDOW_HEIGHT)
 
-        vertex: Vertex = Vertex(transform, attribs)
+        vertex: Vertex = Vertex(position, attribs)
         vertices.append(vertex)
 
-    fragment_uniforms: tuple = (texture, material)
+    fragment_uniforms: tuple = (material, light)
 
     for i in range(0, len(vertices), 3):
         v1: Vertex = vertices[i]
@@ -816,12 +825,13 @@ def draw(framebuffer: Framebuffer, vertices: tuple[list], uniforms: tuple):
 def main() -> None:
     n_samples_per_axis: int = 2
 
-    x_rot_angle: float = math.radians(90)
+    x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
     z_rot_angle: float = math.radians(-135)
 
     cube: Model = Model(load_obj("pumpkin.obj"), load_bmp("pumpkin.bmp"))
     house: Model = Model(load_obj("test.obj"), load_bmp("test.bmp"))
+    specular_map: Buffer = load_bmp("specular_map.bmp")
 
     color_attachment = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                               WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
@@ -829,37 +839,34 @@ def main() -> None:
     depth_attachment = Buffer([float("inf") for x in range(WINDOW_WIDTH * WINDOW_HEIGHT * (n_samples_per_axis ** 2))],
                               WINDOW_WIDTH, WINDOW_HEIGHT, n_samples_per_axis)
 
+    clear_buffer(depth_attachment, float("inf"))
+    clear_buffer(color_attachment, Vec4(0.1, 0.1, 0.1, 1.0))
+
+    transform: Transform = Transform(pos=Vec3(0, 0, 4), rot=make_euler_rotor(
+        Vec3(x_rot_angle, y_rot_angle, z_rot_angle)), scale=Vec3(1, 1, 1))
+
+    model_matrix: Mat4 = make_model_matrix(transform)
+    normal_matrix: Mat4 = make_normal_matrix(model_matrix)
+
+    view_matrix: Mat4 = make_lookat_matrix(
+        Vec3(0.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0), Vec3(0, 1, 0))
+
+    projection_matrix: Mat4 = make_projection_matrix(
+        math.radians(90/2), WINDOW_WIDTH / WINDOW_HEIGHT, 0.001, 100)
+
+    house_mat: Material = Material(house.texture, specular_map, 32)
+    magenta_light: PointLight = PointLight(pos=Vec3(0.0, 0.25, 4.0), linear_att=0.22, quadratic_att=0.20,  color=Vec3(1.0, 0.7, 1.0), specular=Vec3(1.0, 1.0, 1.0))
+
+    uniforms: tuple = (house_mat, model_matrix,
+                       normal_matrix, view_matrix, projection_matrix, magenta_light)
+    framebuffer: Framebuffer = Framebuffer(
+        color_attachment, depth_attachment)
+
+    draw(framebuffer, house.vertices, uniforms)
+
     setup_turtle()
-    while True:
-        clear_buffer(depth_attachment, float("inf"))
-        clear_buffer(color_attachment, Vec4(0.1, 0.1, 0.1, 1.0))
-
-        y_rot_angle += 30
-        transform: Transform = Transform(pos=Vec3(0, 0, 4), rot=make_euler_rotor(
-            Vec3(x_rot_angle, y_rot_angle, z_rot_angle)), scale=Vec3(1, 1, 1))
-
-        model_matrix: Mat4 = make_model_matrix(transform)
-        normal_matrix: Mat4 = make_normal_matrix(model_matrix)
-
-        view_matrix: Mat4 = make_lookat_matrix(
-            Vec3(1.5, 4, -5), Vec3(0, 0, 2), Vec3(0, 1, 0))
-
-        projection_matrix: Mat4 = make_projection_matrix(
-            math.radians(90/2), WINDOW_WIDTH / WINDOW_HEIGHT, 0.001, 100)
-
-        light_pos: Vec3 = Vec3(-1.0, 0, 0.0)
-
-        house_mat: Material = Material(0.0, 1.0, 32)
-
-        uniforms: tuple = (house.texture, house_mat, model_matrix,
-                           normal_matrix, view_matrix, projection_matrix, light_pos)
-        framebuffer: Framebuffer = Framebuffer(
-            color_attachment, depth_attachment)
-
-        draw(framebuffer, house.vertices, uniforms)
-
-        resolve_buffer(framebuffer.color_attachment)
-        present_backbuffer(framebuffer.color_attachment)
+    resolve_buffer(framebuffer.color_attachment)
+    present_backbuffer(framebuffer.color_attachment)
 
     print("DONE!!!")
 
