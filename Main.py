@@ -91,6 +91,14 @@ def dot(v1, v2):
     return accumulated
 
 
+def cross(a: Vec3, b: Vec3):
+    return Vec3(
+        a.y * b.z - a.z * b.y,
+        -(a.x * b.z - a.z * b.x),
+        a.x * b.y - a.y * b.x
+    )
+
+
 def hadamard(v1, v2):
     return type(v1)(*[a * b for a, b in zip(v1, v2)])
 
@@ -122,6 +130,108 @@ def transpose(mat: Mat4):
         Vec4(mat.row1.y, mat.row2.y, mat.row3.y, mat.row4.y),
         Vec4(mat.row1.z, mat.row2.z, mat.row3.z, mat.row4.z),
         Vec4(mat.row1.w, mat.row2.w, mat.row3.w, mat.row4.w))
+
+
+class Rot3(NamedTuple):
+    scalar: float
+    xy: float
+    yz: float
+    zx: float
+
+    def __mul__(self, other):
+        return Rot3(
+            self.scalar * other.scalar - self.xy * other.xy -
+            self.yz * other.yz - self.zx * other.zx,
+            self.scalar * other.xy + self.xy * other.scalar -
+            self.yz * other.zx + self.zx*other.yz,
+            self.scalar * other.yz + self.xy * other.zx +
+            self.yz * other.scalar - self.zx * other.xy,
+            self.scalar * other.zx - self.xy * other.yz +
+            self.yz * other.xy + self.zx * other.scalar
+        )
+
+
+def wedge(a: Vec3, b: Vec3) -> Vec3:
+    return Vec3(
+        (a.x * b.y) - (a.y * b.x),
+        (a.y * b.z) - (a.z * b.y),
+        (a.z * b.x) - (a.x * b.z)
+    )
+
+
+def make_rotor(from_vec: Vec3, to_vec: Vec3, theta: float = None):
+    """
+        equations credit: https://jacquesheunis.com/post/rotors/
+    """
+    from_vec = normalize(from_vec)
+    to_vec = normalize(to_vec)
+
+    if (theta is None):
+        # handle when halfway magnitude is zero
+        halfway_vec: Vec3 = normalize(from_vec + to_vec)
+
+        scalar_part: Vec3 = dot(from_vec, halfway_vec)
+        wedge_part: Vec3 = normalize(wedge(halfway_vec, from_vec))
+
+        return Rot3(scalar_part, *wedge_part)
+
+    scalar_part: float = math.cos(theta / 2)
+    wedge_part: Vec3 = normalize(
+        wedge(to_vec, from_vec)) * math.sin(theta / 2.0)
+
+    return Rot3(scalar_part, *wedge_part)
+
+
+def make_rotor_pyr(pyr: Vec3) -> Rot3:
+    """
+        pyr -> pitch, yaw, roll -> x axis, y axis, z axis
+        the components in pyz correspond to radians around that axis.
+    """
+    return \
+        make_rotor(Vec3(0.0, 1.0, 0.0), Vec3(0.0, 0.0, 1.0), pyr.x) * \
+        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 0.0, 1.0), pyr.y) * \
+        make_rotor(Vec3(1.0, 0.0, 0.0), Vec3(0.0, 1.0, 0.0), pyr.z)
+
+
+def reverse(r: Rot3):
+    """
+        https://jacquesheunis.com/post/rotors/#eqn:geometric-product-complete
+    """
+    return Rot3(
+        r.scalar,
+        -r.xy,
+        -r.yz,
+        -r.zx
+    )
+
+
+def rotate(v: Vec3, r: Rot3) -> Vec3:
+    """
+        https://jacquesheunis.com/post/rotors/#eqn:geometric-product-complete
+    """
+
+    s_x: float = r.scalar * v.x + r.xy * v.y - r.zx * v.z
+    s_y: float = r.scalar * v.y - r.xy * v.x + r.yz * v.z
+    s_z: float = r.scalar * v.z - r.yz * v.y + r.zx * v.x
+    s_xyz: float = r.xy * v.z + r.yz * v.x + r.zx * v.y
+
+    return Vec3(
+        s_x * r.scalar + s_y * r.xy + s_xyz * r.yz - s_z * r.zx,
+        s_y * r.scalar - s_x * r.xy + s_z * r.yz + s_xyz * r.zx,
+        s_z * r.scalar + s_xyz * r.xy - s_y * r.yz + s_x * r.zx
+    )
+
+
+def make_rotation_matrix(r: Rot3) -> Mat4:
+    x_basis: Vec3 = rotate(Vec3(1.0, 0.0, 0.0), r)
+    y_basis: Vec3 = rotate(Vec3(0.0, 1.0, 0.0), r)
+    z_basis: Vec3 = rotate(Vec3(0.0, 0.0, 1.0), r)
+    return Mat4(
+        Vec4(x_basis.x, y_basis.x, z_basis.x, 0.0),
+        Vec4(x_basis.y, y_basis.y, z_basis.y, 0.0),
+        Vec4(x_basis.z, y_basis.z, z_basis.z, 0.0),
+        Vec4(0.0, 0.0, 0.0, 1.0)
+    )
 
 
 class Buffer(NamedTuple):
@@ -629,7 +739,7 @@ def main() -> None:
 
     x_rot_angle: float = math.radians(60)
     y_rot_angle: float = math.radians(0)
-    z_rot_angle: float = math.radians(125)
+    z_rot_angle: float = math.radians(-135)
 
     cube: Model = Model(load_obj("pumpkin.obj"), load_bmp("pumpkin.bmp"))
     house: Model = Model(load_obj("test.obj"), load_bmp("test.bmp"))
@@ -654,7 +764,7 @@ def main() -> None:
     model_matrix: Mat4 = Mat4(
         Vec4(1, 0, 0, 0),
         Vec4(0, 1, 0, 0),
-        Vec4(0, 0, 1, 3),
+        Vec4(0, 0, 1, 4),
         Vec4(0, 0, 0, 1))
 
     light_pos: Vec3 = Vec3(-1.0, 0, 0.0)
@@ -664,25 +774,10 @@ def main() -> None:
         Vec4(0, 0, 0.1, 2.2),
         Vec4(0, 0, 0, 1))
 
-    x_rot_matrix: Mat4 = Mat4(
-        Vec4(1, 0, 0, 0),
-        Vec4(0, math.cos(x_rot_angle), -math.sin(x_rot_angle), 0),
-        Vec4(0, math.sin(x_rot_angle), math.cos(x_rot_angle), 0),
-        Vec4(0, 0, 0, 1))
-    y_rot_matrix: Mat4 = Mat4(
-        Vec4(math.cos(y_rot_angle), 0, math.sin(y_rot_angle), 0),
-        Vec4(0, 1, 0, 0),
-        Vec4(-math.sin(y_rot_angle), 0, math.cos(y_rot_angle), 0),
-        Vec4(0, 0, 0, 1))
-    z_rot_matrix: Mat4 = Mat4(
-        Vec4(math.cos(z_rot_angle), math.sin(z_rot_angle), 0, 0),
-        Vec4(-math.sin(z_rot_angle), math.cos(z_rot_angle), 0, 0),
-        Vec4(0, 0, 1, 0),
-        Vec4(0, 0, 0, 1))
+    rot_matrix: Mat4 = make_rotation_matrix(
+        make_rotor_pyr(Vec3(x_rot_angle, y_rot_angle, z_rot_angle)))
 
-    rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
-
-    house_mat: Material = Material(0.2, 0.5, 32)
+    house_mat: Material = Material(0.0, 1.0, 32)
     light_mat: Material = Material(0.7, 0.0, 32)
 
     uniforms: tuple = (house.texture, house_mat, projection_matrix,
@@ -692,31 +787,9 @@ def main() -> None:
 
     draw(framebuffer, house.vertices, uniforms)
 
-    x_rot_angle: float = math.radians(0)
-    y_rot_angle: float = math.radians(-25)
-    z_rot_angle: float = math.radians(0)
-
-    x_rot_matrix: Mat4 = Mat4(
-        Vec4(1, 0, 0, 0),
-        Vec4(0, math.cos(x_rot_angle), -math.sin(x_rot_angle), 0),
-        Vec4(0, math.sin(x_rot_angle), math.cos(x_rot_angle), 0),
-        Vec4(0, 0, 0, 1))
-    y_rot_matrix: Mat4 = Mat4(
-        Vec4(math.cos(y_rot_angle), 0, math.sin(y_rot_angle), 0),
-        Vec4(0, 1, 0, 0),
-        Vec4(-math.sin(y_rot_angle), 0, math.cos(y_rot_angle), 0),
-        Vec4(0, 0, 0, 1))
-    z_rot_matrix: Mat4 = Mat4(
-        Vec4(math.cos(z_rot_angle), math.sin(z_rot_angle), 0, 0),
-        Vec4(-math.sin(z_rot_angle), math.cos(z_rot_angle), 0, 0),
-        Vec4(0, 0, 1, 0),
-        Vec4(0, 0, 0, 1))
-
-    rot_matrix: Mat4 = x_rot_matrix * y_rot_matrix * z_rot_matrix
-
-    uniforms: tuple = (cube.texture, house_mat, projection_matrix,
-                       model_matrix_2, rot_matrix, light_pos)
-    draw(framebuffer, cube.vertices, uniforms)
+    # uniforms: tuple = (cube.texture, house_mat, projection_matrix,
+    #                    model_matrix_2, rot_matrix, light_pos)
+    # draw(framebuffer, cube.vertices, uniforms)
 
     setup_turtle()
     resolve_buffer(framebuffer.color_attachment)
