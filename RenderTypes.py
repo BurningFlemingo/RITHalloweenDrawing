@@ -11,7 +11,7 @@ class Vertex(NamedTuple):
 
 
 class Transform:
-    def __init__(self, pos: Vec3, rot: Vec3, scale: Vec3 = Vec3(1.0, 1.0, 1.0)):
+    def __init__(self, pos: Vec3, rot: Vec3 = Vec3(0.0, 0.0, 0.0), scale: Vec3 = Vec3(1.0, 1.0, 1.0)):
         """
             rot is in euler angles in degrees
         """
@@ -21,11 +21,13 @@ class Transform:
         self.scale = Vec3(*scale)
 
 
-class PointLight(NamedTuple):
-    pos: Vec3
+class PointLight:
+    def __init__(self, pos: Vec3, linear_att: float, quadratic_att: float, color: Vec3, specular: Vec3):
+        self.pos = Vec3(*pos)
 
-    linear_att: float
-    quadratic_att: float
-
-    color: Vec3  # used as the ambient and diffuse color
-    specular: Vec3
+        self.linear_att = linear_att
+        self.quadratic_att = quadratic_att
+        
+        self.color = Vec3(*color)
+        self.specular = Vec3(*specular)
+        

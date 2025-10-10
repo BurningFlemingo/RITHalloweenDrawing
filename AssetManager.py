@@ -13,15 +13,15 @@ class AssetManager:
             material: Material = mesh_asset.material
             if (material.ambient_map_path not in self.m_loaded_texture_cache):
                 self.m_loaded_texture_cache[material.ambient_map_path] = \
-                    load_bmp(material.ambient_map_path)
+                    load_bmp(material.ambient_map_path, is_srgb_nonlinear=True)
 
             if (material.diffuse_map_path not in self.m_loaded_texture_cache):
                 self.m_loaded_texture_cache[material.diffuse_map_path] = \
-                    load_bmp(material.diffuse_map_path)
+                    load_bmp(material.diffuse_map_path, is_srgb_nonlinear=True)
 
             if (material.specular_map_path not in self.m_loaded_texture_cache):
                 self.m_loaded_texture_cache[material.specular_map_path] = \
-                    load_bmp(material.specular_map_path)
+                    load_bmp(material.specular_map_path, is_srgb_nonlinear=True)
 
             ambient_map: Buffer = self.m_loaded_texture_cache[material.ambient_map_path]
             diffuse_map: Buffer = self.m_loaded_texture_cache[material.diffuse_map_path]

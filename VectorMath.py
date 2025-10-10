@@ -24,6 +24,9 @@ class Vec4(NamedTuple):
     def __floordiv__(self, factor):
         return type(self)(*[a // factor for a in self])
 
+    def __pow__(self, exp):
+        return type(self)(*[a ** exp for a in self])
+
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2 + self.w**2)
 
@@ -48,6 +51,9 @@ class Vec3(NamedTuple):
     def __floordiv__(self, factor):
         return type(self)(*[a // factor for a in self])
 
+    def __pow__(self, exp):
+        return type(self)(*[a ** exp for a in self])
+
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2)
 
@@ -70,6 +76,9 @@ class Vec2(NamedTuple):
 
     def __floordiv__(self, factor):
         return type(self)(*[a // factor for a in self])
+
+    def __pow__(self, exp):
+        return type(self)(*[a ** exp for a in self])
 
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2)

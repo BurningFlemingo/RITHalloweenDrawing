@@ -1,25 +1,29 @@
 from Buffer import *
 from VectorMath import *
+from dataclasses import dataclass, field
 
 
-class MaterialAsset(NamedTuple):
-    ambient_color: Vec3
-    diffuse_color: Vec3
-    specular_color: Vec3
+@dataclass
+class MaterialAsset:
+    ambient_color: Vec3 = Vec3(0.2, 0.2, 0.2)
+    diffuse_color: Vec3 = Vec3(1.0, 1.0, 1.0)
+    specular_color: Vec3 = Vec3(0.2, 0.2, 0.2)
 
-    ambient_map_path: str
-    diffuse_map_path: str
-    specular_map_path: str
+    ambient_map_path: str = "assets\\defaults\\solid_white.bmp"
+    diffuse_map_path: str = "assets\\defaults\\solid_white.bmp"
+    specular_map_path: str = "assets\\defaults\\solid_white.bmp"
 
-    specular_sharpness: float
+    specular_sharpness: float = 32
+    name: str = "default"
 
 
-class MeshAsset(NamedTuple):
-    material: MaterialAsset
+@dataclass
+class MeshAsset:
+    material: MaterialAsset = field(default_factory=MaterialAsset)
 
-    positions: list[Vec3]
-    normals: list[Vec3]
-    tex_uvs: list[Vec2]
+    positions: list[Vec3] = field(default_factory=list)
+    normals: list[Vec3] = field(default_factory=list)
+    tex_uvs: list[Vec2] = field(default_factory=list) 
 
 
 class Material(NamedTuple):
@@ -44,7 +48,10 @@ class Mesh(NamedTuple):
     num_vertices: int
 
 
-def load_bmp(path: str) -> Buffer:
+def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
+    """
+        Automatically loads the buffer gamma corrected if is_srgb is True. 
+    """
     with open(path, 'rb') as bmp:
         loaded_bmp: bytes = bmp.read()
 
@@ -82,6 +89,10 @@ def load_bmp(path: str) -> Buffer:
         channel_max: float = ((2 ** (bytes_per_color_channel * 8)) - 1)
         channel_inv_max: float = 1.0 / channel_max
 
+        gamma_correction: float = 1.0
+        if (is_srgb_nonlinear):
+            gamma_correction = 2.2
+            
         for row in range(height):
             row_offset: int = row * width
             row_byte_offset: int = row * row_size
@@ -96,15 +107,18 @@ def load_bmp(path: str) -> Buffer:
                 else:
                     a: int = channel_max
 
-                pixels[row_offset + column] = Vec4(
-                    r * channel_inv_max, g * channel_inv_max, b *
-                    channel_inv_max, a * channel_inv_max
+                normalized_color: Vec4 = Vec4(
+                    (r * channel_inv_max) ** gamma_correction,
+                    (g * channel_inv_max) ** gamma_correction,
+                    (b * channel_inv_max) ** gamma_correction,
+                    a * channel_inv_max
                 )
-
+                pixels[row_offset + column] = normalized_color
+                    
             if row % 100 == 0:
                 print("Read row", row, "of", path)
 
-        return Buffer(pixels, width, height, 1)
+        return Buffer(pixels, width, height, 1, srgb_nonlinear=is_srgb_nonlinear)
 
 
 def parse_mtl(path: str) -> dict[str, MaterialAsset]:
@@ -116,17 +130,7 @@ def parse_mtl(path: str) -> dict[str, MaterialAsset]:
 
     materials: dict[str, MaterialAsset] = {}
     with open(path) as mtl:
-        mat_name: str = ""
-
-        ambient_color: Vec3 = Vec3(0.0, 0.0, 0.0)
-        diffuse_color: Vec3 = Vec3(0.0, 0.0, 0.0)
-        specular_color: Vec3 = Vec3(0.0, 0.0, 0.0)
-
-        ambient_map_path: str = "assets\\defaults\\solid_white.bmp"
-        diffuse_map_path: str = "assets\\defaults\\default_texture.bmp"
-        specular_map_path: str = "assets\\defaults\\solid_white.bmp"
-
-        specular_sharpness: float = 0
+        material: MaterialAsset = MaterialAsset()
 
         for line in mtl:
             items: [str] = line.strip().split()
@@ -137,47 +141,29 @@ def parse_mtl(path: str) -> dict[str, MaterialAsset]:
             if (id == '#'):
                 continue
             elif (id == 'newmtl'):
-                if (not materials is None):
-                    material: MaterialAsset = MaterialAsset(
-                        ambient_color,
-                        diffuse_color,
-                        specular_color,
-                        ambient_map_path,
-                        diffuse_map_path,
-                        specular_map_path,
-                        specular_sharpness
-                    )
-                    materials[mat_name] = material
-                mat_name = items[1]
+                if (material.name != "default"):
+                    materials[material.name] = material
+                material = MaterialAsset(name=items[1])
             elif (id == "Ns"):
-                specular_sharpness = float(items[1])
+                material.specular_sharpness = float(items[1])
             elif (id == "Ka"):
-                ambient_color = Vec3(
+                material.ambient_color = Vec3(
                     float(items[1]), float(items[2]), float(items[3]))
             elif (id == "Kd"):
-                diffuse_color = Vec3(
+                material.diffuse_color = Vec3(
                     float(items[1]), float(items[2]), float(items[3]))
             elif (id == "Ks"):
-                specular_color = Vec3(
+                material.specular_color = Vec3(
                     float(items[1]), float(items[2]), float(items[3]))
             elif (id == "map_Ka"):
-                ambient_map_path = directory + items[1]
+                material.ambient_map_path = directory + items[1]
             elif (id == "map_Kd"):
-                diffuse_map_path = directory + items[1]
+                material.diffuse_map_path = directory + items[1]
             elif (id == "map_Ks"):
-                specular_map_path = directory + items[1]
-        material: MaterialAsset = MaterialAsset(
-            ambient_color,
-            diffuse_color,
-            specular_color,
-            ambient_map_path,
-            diffuse_map_path,
-            specular_map_path,
-            specular_sharpness
-        )
+                material.specular_map_path = directory + items[1]
+        materials[material.name] = material
 
-        materials[mat_name] = material
-
+    [print(materials[key].name, ":", materials[key].diffuse_map_path) for key in materials]
     return materials
 
 
@@ -197,7 +183,7 @@ def parse_obj(path: str) -> list[MeshAsset]:
 
     with open(path) as obj:
         n_vertices: int = 0
-        current_mesh = None
+        current_mesh: MeshAsset = MeshAsset()
         for line in obj:
             items: [str] = line.strip().split()
             if (len(items) == 0):
@@ -223,9 +209,9 @@ def parse_obj(path: str) -> list[MeshAsset]:
             elif (id == "mtllib"):
                 materials.update(parse_mtl(directory + items[1]))
             elif (id == "usemtl"):
-                if (not current_mesh is None):
+                if (len(current_mesh.positions) != 0):
                     meshes.append(current_mesh)
-                current_mesh = MeshAsset(materials[items[1]], [], [], [])
+                current_mesh = MeshAsset(material=materials[items[1]])
             elif (id == "f"):
                 attribs: list[list[int]] = []
                 for vertex in items[1:]:
