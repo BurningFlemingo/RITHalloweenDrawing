@@ -20,23 +20,16 @@ WINDOW_HEIGHT: int = 1080//2
 
 
 def main() -> None:
-    viewport: Viewport = Viewport(WINDOW_WIDTH, WINDOW_HEIGHT)
-    scene: Scene = Scene(viewport)
+    viewport = Viewport(WINDOW_WIDTH, WINDOW_HEIGHT)
+    scene = Scene(viewport)
 
-    x_rot_angle: float = math.radians(60)
-    y_rot_angle: float = math.radians(0)
-    z_rot_angle: float = math.radians(-135)
-
-    transform: Transform = Transform(pos=Vec3(0, 0, 4), rot=make_euler_rotor(
-        Vec3(x_rot_angle, y_rot_angle, z_rot_angle)), scale=Vec3(1, 1, 1))
+    transform = Transform(pos=[0, 0, 4], rot=[60, 0, -135])
     scene.add_model("assets\\test\\test.obj", transform)
 
     scene.render()
     scene.present()
 
-    print("DONE!!!")
-
-    turtle.done()
+    scene.finish()
 
 
 if __name__ == "__main__":

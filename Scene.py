@@ -84,3 +84,6 @@ class Scene:
 
     def present(self):
         present_backbuffer(self.framebuffer.color_attachment, self.viewport)
+
+    def finish(self):
+        turtle.done()
