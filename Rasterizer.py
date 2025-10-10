@@ -22,6 +22,7 @@ class RasterCtx(NamedTuple):
 
 
 def is_covered_edge(edge: Vec4) -> bool:
+    # top-left rule
     if (edge.y < 0):
         return True
 
@@ -64,8 +65,6 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
 
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
-
-                # print(v_px, u_px, depth_buffer_index)
 
                 if (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
 

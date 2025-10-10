@@ -33,18 +33,18 @@ def fragment_shader(uniforms: FragmentUniforms, attributes: FragmentAttributes) 
         (1.0 + light.linear_att * light_distance +
          (light.quadratic_att * light_distance ** 2))
 
-    ambient: Vec3 = hadamard(
-        light.color, material.diffuse.sampleUV(*tex_uv) * 0.2)
+    ambient: Vec3 = hadamard(hadamard(
+        light.color, material.diffuse_map.sampleUV(*tex_uv) * 0.2), material.ambient_color)
 
     diffuse_strength: float = max(dot(light_dir, norm), 0)
-    diffuse: Vec3 = hadamard(
-        light.color, material.diffuse.sampleUV(*tex_uv) * diffuse_strength)
+    diffuse: Vec3 = hadamard(hadamard(
+        light.color, material.diffuse_map.sampleUV(*tex_uv) * diffuse_strength), material.diffuse_color)
 
     halfway: Vec3 = normalize(view_dir + light_dir)
-    spec: float = max(dot(norm, halfway), 0) ** material.shininess
-    specular = hadamard(
-        light.specular, (material.specular.sampleUV(*tex_uv) * spec))
+    spec: float = max(dot(norm, halfway), 0) ** material.specular_sharpness
+    specular = hadamard(hadamard(
+        light.specular, (material.specular_map.sampleUV(*tex_uv) * spec)), material.specular_color)
 
-    result: Vec3 = specular * attenuation
+    result: Vec3 = (ambient + diffuse + specular) * attenuation
 
     return Vec4(*result, 1.0)

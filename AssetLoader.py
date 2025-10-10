@@ -2,10 +2,7 @@ from Buffer import *
 from VectorMath import *
 
 
-class Material_Asset(NamedTuple):
-    name: str
-    path: str
-
+class MaterialAsset(NamedTuple):
     ambient_color: Vec3
     diffuse_color: Vec3
     specular_color: Vec3
@@ -13,22 +10,38 @@ class Material_Asset(NamedTuple):
     ambient_map_path: str
     diffuse_map_path: str
     specular_map_path: str
+    
+    specular_sharpness: float
 
 
-class Model_Asset(NamedTuple):
-    path: str
-    texture_path: str
-
-
-class Model(NamedTuple):
-    vertices: tuple[Vec3, Vec3, Vec2]
-    texture: Buffer
+class MeshAsset(NamedTuple):
+    material: MaterialAsset
+    
+    positions: list[Vec3]
+    normals: list[Vec3]
+    tex_uvs: list[Vec2]
 
 
 class Material(NamedTuple):
-    diffuse: Buffer
-    specular: Buffer
-    shininess: float
+    ambient_color: Vec3
+    diffuse_color: Vec3
+    specular_color: Vec3
+
+    ambient_map: Buffer
+    diffuse_map: Buffer
+    specular_map: Buffer
+
+    specular_sharpness: float
+
+
+class Mesh(NamedTuple):
+    material: Material 
+    
+    positions: list[Vec3]
+    normals: list[Vec3]
+    tex_uvs: list[Vec2]
+    
+    num_vertices: int
 
 
 def load_bmp(path: str) -> Buffer:
@@ -94,19 +107,94 @@ def load_bmp(path: str) -> Buffer:
         return Buffer(pixels, width, height, 1)
 
 
-def load_mtl(path: str):
-    pass
+def parse_mtl(path: str) -> dict[str, MaterialAsset]:
+    directory: str = ""
+    for i in range(len(path) - 1, 0, -1):
+        if (path[i] == '\\'):
+            directory = path[:i] + "\\"
+            break
+        
+    materials: dict[str, MaterialAsset] = {}
+    with open(path) as mtl:
+        mat_name: str = ""
+        
+        ambient_color: Vec3 = Vec3(0.0, 0.0, 0.0)
+        diffuse_color: Vec3 = Vec3(0.0, 0.0, 0.0)
+        specular_color: Vec3 = Vec3(0.0, 0.0, 0.0)
 
+        ambient_map_path: str = "assets\\defaults\\solid_white.bmp"
+        diffuse_map_path: str = "assets\\defaults\\default_texture.bmp"
+        specular_map_path: str = "assets\\defaults\\solid_white.bmp"
+        
+        specular_sharpness: float = 0
+        
+        for line in mtl:
+            items: [str] = line.strip().split()
+            if (len(items) == 0):
+                continue
+            id: str = items[0]
 
-def load_obj(path: str) -> (list[Vec3], list[Vec3], list[Vec2]):
+            if (id == '#'):
+                continue
+            elif(id == 'newmtl'):
+                if (not materials is None):
+                    material: MaterialAsset = MaterialAsset(
+                            ambient_color, 
+                            diffuse_color, 
+                            specular_color, 
+                            ambient_map_path,
+                            diffuse_map_path, 
+                            specular_map_path, 
+                            specular_sharpness
+                            )
+                    materials[mat_name] = material
+                mat_name = items[1]
+            elif(id == "Ns"):
+                specular_sharpness = float(items[1])
+            elif(id == "Ka"):
+                ambient_color = Vec3(float(items[1]), float(items[2]), float(items[3]))
+            elif(id == "Kd"):
+                diffuse_color = Vec3(float(items[1]), float(items[2]), float(items[3]))
+            elif(id == "Ks"):
+                specular_color = Vec3(float(items[1]), float(items[2]), float(items[3]))
+            elif(id == "map_Ka"):
+                ambient_map_path = directory + items[1]
+            elif(id == "map_Kd"):
+                diffuse_map_path = directory + items[1]
+            elif(id == "map_Ks"):
+                specular_map_path = directory + items[1]
+        material: MaterialAsset = MaterialAsset(
+            ambient_color, 
+            diffuse_color, 
+            specular_color, 
+            ambient_map_path,
+            diffuse_map_path,
+            specular_map_path,
+            specular_sharpness
+        )
+        
+        materials[mat_name] = material
+
+    return materials
+                
+
+def parse_obj(path: str) -> list[MeshAsset]:
     unique_positions: list[Vec3] = []
     unique_normals: list[Vec3] = []
     unique_tex_uvs: list[Vec2] = []
 
-    positions: list[Vec3] = []
-    normals: list[Vec3] = []
-    tex_uvs: list[Vec2] = []
+    materials: dict[str, MaterialAsset] = {}
+    meshes: list[MeshAsset] = []
+
+    directory: str = ""
+    for i in range(len(path) - 1, 0, -1):
+        if (path[i] == '\\'):
+            directory = path[:i] + "\\"
+            break
+    
     with open(path) as obj:
+        n_vertices: int = 0
+        current_mesh = None
         for line in obj:
             items: [str] = line.strip().split()
             if (len(items) == 0):
@@ -130,21 +218,36 @@ def load_obj(path: str) -> (list[Vec3], list[Vec3], list[Vec2]):
                 tex_uv: Vec2 = Vec2(float(items[1]), float(items[2]))
                 unique_tex_uvs.append(tex_uv)
             elif (id == "mtllib"):
-                pass
-
+                materials.update(parse_mtl(directory + items[1]))
+            elif (id == "usemtl"):
+                if (not current_mesh is None):
+                    meshes.append(current_mesh)
+                current_mesh = MeshAsset(materials[items[1]], [], [], [])
             elif (id == "f"):
-                atribs: list[list[int]] = [
-                    [int(attribute_index) - 1 for attribute_index in vertex.split("/")] for vertex in items[1:]]
-                positions.append(unique_positions[atribs[0][0]])
-                positions.append(unique_positions[atribs[1][0]])
-                positions.append(unique_positions[atribs[2][0]])
+                attribs: list[list[int]] = []
+                for vertex in items[1:]:
+                    vertex_attribute_indices: list[int] = []
+                    for attribute_index_str in vertex.split('/'):
+                        if (attribute_index_str == ""):
+                            vertex_attribute_indices.append(0)
+                        else:
+                            vertex_attribute_indices.append(int(attribute_index_str) - 1)
+                    attribs.append(vertex_attribute_indices)
+                    
+                current_mesh.positions.append(unique_positions[attribs[0][0]])
+                current_mesh.positions.append(unique_positions[attribs[1][0]])
+                current_mesh.positions.append(unique_positions[attribs[2][0]])
 
-                normals.append(unique_normals[atribs[0][2]])
-                normals.append(unique_normals[atribs[1][2]])
-                normals.append(unique_normals[atribs[2][2]])
+                current_mesh.normals.append(unique_normals[attribs[0][2]])
+                current_mesh.normals.append(unique_normals[attribs[1][2]])
+                current_mesh.normals.append(unique_normals[attribs[2][2]])
 
-                tex_uvs.append(unique_tex_uvs[atribs[0][1]])
-                tex_uvs.append(unique_tex_uvs[atribs[1][1]])
-                tex_uvs.append(unique_tex_uvs[atribs[2][1]])
+                current_mesh.tex_uvs.append(unique_tex_uvs[attribs[0][1]])
+                current_mesh.tex_uvs.append(unique_tex_uvs[attribs[1][1]])
+                current_mesh.tex_uvs.append(unique_tex_uvs[attribs[2][1]])
 
-    return (positions, normals, tex_uvs)
+        meshes.append(current_mesh)
+
+    return meshes 
+
+

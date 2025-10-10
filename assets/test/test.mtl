@@ -1,0 +1,12 @@
+mtllib desert_vignette_night.mtl
+newmtl mat0
+Ns 399.99998
+Ka 1.0 1.0 1.0
+Kd 1 1 1
+Ks 0.5 0.5 0.5
+Ke 0.0 0.0 0.0
+Ni 1.0
+d 1
+illum 2
+map_Kd test.bmp
+
