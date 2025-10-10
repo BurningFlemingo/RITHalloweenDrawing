@@ -2,6 +2,7 @@ import math
 from typing import NamedTuple
 from typing import Any
 
+
 class Vec4(NamedTuple):
     x: Any
     y: Any
@@ -188,4 +189,3 @@ def rotate_vec(v: Vec3, r: Rot3) -> Vec3:
         s_y * r.scalar - s_x * r.xy + s_z * r.yz + s_xyz * r.zx,
         s_z * r.scalar + s_xyz * r.xy - s_y * r.yz + s_x * r.zx
     )
-

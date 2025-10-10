@@ -1,4 +1,7 @@
 from typing import NamedTuple
+from typing import Any
+from VectorMath import *
+
 
 class Buffer(NamedTuple):
     data: list[Any]
@@ -29,7 +32,7 @@ class Buffer(NamedTuple):
 class Framebuffer(NamedTuple):
     color_attachment: Buffer
     depth_attachment: Buffer
-    
+
 
 def resolve_buffer(buffer: Buffer) -> None:
     n_samples: int = buffer.n_samples_per_axis ** 2

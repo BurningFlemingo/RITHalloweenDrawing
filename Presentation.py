@@ -22,7 +22,7 @@ def setup_turtle(window_width: int, window_height: int) -> None:
 
     turtle.tracer(0, 0)
     turtle.pensize(1)
-    
+
 
 def present_backbuffer(backbuffer: Buffer, viewport: Viewport) -> None:
     pen_color: Vec4 = Vec4(0.0, 0.0, 0.0, 1.0)

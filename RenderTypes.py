@@ -1,7 +1,6 @@
 from typing import NamedTuple
 from Buffer import *
 from VectorMath import *
-from MatrixMath import *
 
 
 class Vertex(NamedTuple):
@@ -14,11 +13,12 @@ class Transform(NamedTuple):
     rot: Rot3  # rotor
     scale: Vec3
 
+
 class PointLight(NamedTuple):
     pos: Vec3
 
     linear_att: float
     quadratic_att: float
 
-    color: Vec3 # used as the ambient and diffuse color
+    color: Vec3  # used as the ambient and diffuse color
     specular: Vec3

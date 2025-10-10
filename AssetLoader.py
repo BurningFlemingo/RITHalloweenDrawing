@@ -14,9 +14,11 @@ class Material_Asset(NamedTuple):
     diffuse_map_path: str
     specular_map_path: str
 
+
 class Model_Asset(NamedTuple):
     path: str
     texture_path: str
+
 
 class Model(NamedTuple):
     vertices: tuple[Vec3, Vec3, Vec2]

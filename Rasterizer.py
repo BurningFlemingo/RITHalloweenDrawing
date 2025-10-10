@@ -19,7 +19,7 @@ class RasterCtx(NamedTuple):
     w1_bias: float
     w2_bias: float
     w3_bias: float
-    
+
 
 def is_covered_edge(edge: Vec4) -> bool:
     if (edge.y < 0):
@@ -208,4 +208,3 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
         w2 = row_w2 + w2_px_step.y
 
     return True
-

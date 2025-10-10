@@ -14,6 +14,7 @@ class Uniforms(NamedTuple):
     vertex: VertexUniforms
     fragment: FragmentUniforms
 
+
 def perspective_divide(vec: Vec4) -> Vec4:
     """
         w component is saved.
@@ -26,17 +27,21 @@ def viewport_transform(ndc: Vec4, width: int, height: int) -> Vec4:
     y_px: float = ((ndc.y + 1.0) * 0.5) * height
     return Vec4(x_px, y_px, ndc.z, ndc.w)
 
+
 def draw(framebuffer: Framebuffer, viewport: Viewport, uniforms: Uniforms, vertex_buffers: tuple[list], first: int, count: int):
     vertices: list[Vertex] = []
     for i in range(first, count):
-        vertex_attributes: VertexAttributes = VertexAttributes(*[buffer[i] for buffer in vertex_buffers])
-        pos, fragment_attributes = vertex_shader(uniforms.vertex, vertex_attributes)
-        
+        vertex_attributes: VertexAttributes = VertexAttributes(
+            *[buffer[i] for buffer in vertex_buffers])
+        pos, fragment_attributes = vertex_shader(
+            uniforms.vertex, vertex_attributes)
+
         pos = perspective_divide(pos)
         pos = viewport_transform(
             pos, viewport.width, viewport.height)
 
-        vertex: Vertex = Vertex(pos=pos, fragment_attributes=fragment_attributes)
+        vertex: Vertex = Vertex(
+            pos=pos, fragment_attributes=fragment_attributes)
         vertices.append(vertex)
 
     for i in range(0, len(vertices), 3):
@@ -46,4 +51,3 @@ def draw(framebuffer: Framebuffer, viewport: Viewport, uniforms: Uniforms, verte
 
         rasterize_triangle(
             framebuffer, uniforms.fragment, v1, v2, v3)
-

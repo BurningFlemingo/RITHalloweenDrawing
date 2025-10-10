@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from RenderTypes import *
 from VectorMath import *
 
 
@@ -28,7 +29,7 @@ def det3x3(row1: Vec3, row2: Vec3, row3: Vec3) -> float:
         row1.x * det2x2(Vec2(row2.y, row2.z), Vec2(row3.y, row3.z)) - \
         row1.y * det2x2(Vec2(row2.x, row2.z), Vec2(row3.x, row3.z)) + \
         row1.z * det2x2(Vec2(row2.x, row2.y), Vec2(row3.x, row3.y))
-        
+
 
 def transpose(mat: Mat4):
     return Mat4(
