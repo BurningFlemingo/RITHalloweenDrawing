@@ -1,7 +1,11 @@
+from typing import Callable
+
 from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
-from shaders.First_frag import *
+
+
+FragmentShader = Callable[[Any], Vec4]
 
 
 class RasterCtx(NamedTuple):
@@ -83,7 +87,7 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
-def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple, w1: float, w2: float, w3: float, px_depth: float) -> tuple:
+def interpolate_attributes(p1_attrib: NamedTuple, p2_attrib: NamedTuple, p3_attrib: NamedTuple, w1: float, w2: float, w3: float, px_depth: float) -> NamedTuple:
 
     n_attributes: int = len(p1_attrib)
     attributes = []
@@ -94,10 +98,10 @@ def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple,
         interpolated = (a1 + a2 + a3) * px_depth
         attributes.append(interpolated)
 
-    return tuple(attributes)
+    return type(p1_attrib)(*attributes)
 
 
-def shade_pixel(ctx: RasterCtx, fragment_shader: FragShaderObject, u_px: int, v_px: int, w1: int, w2: int) -> bool:
+def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
     samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
@@ -115,7 +119,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragShaderObject, u_px: int, v_
     px_depth: float = 1.0 / (w1/p1.pos.w +
                              w2/p2.pos.w + w3/p3.pos.w)
 
-    interpolated_attributes: tuple = interpolate_attributes(
+    interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
 
     color: Vec4 = fragment_shader(interpolated_attributes)
@@ -138,11 +142,11 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
 
-def attrib_pre_divide(p: Vertex) -> tuple:
-    return tuple([attrib / p.pos.w for attrib in p.fragment_attributes])
+def attrib_pre_divide(p: Vertex) -> NamedTuple:
+    return type(p.fragment_attributes)(*[attrib / p.pos.w for attrib in p.fragment_attributes])
 
 
-def rasterize_triangle(fb: Framebuffer, fragment_shader: FragShaderObject, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason

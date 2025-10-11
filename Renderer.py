@@ -6,13 +6,13 @@ from MatrixMath import *
 from Buffer import *
 from Presentation import Viewport
 
-from shaders.First_frag import *
-from shaders.First_vert import *
+
+VertexShader = Callable[[Any], Vertex]
 
 
 class ShaderProgram(NamedTuple):
-    vertex_shader: VertShaderObject
-    fragment_shader: FragShaderObject
+    vertex_shader: VertexShader
+    fragment_shader: FragmentShader
 
 
 def perspective_divide(vec: Vec4) -> Vec4:
@@ -28,20 +28,23 @@ def viewport_transform(ndc: Vec4, width: int, height: int) -> Vec4:
     return Vec4(x_px, y_px, ndc.z, ndc.w)
 
 
-def draw(framebuffer: Framebuffer, viewport: Viewport, program: ShaderProgram, vertex_buffers: tuple[list], first: int, count: int):
+def draw(framebuffer: Framebuffer, viewport: Viewport, program: ShaderProgram, vertex_buffers: dict[str, list], first: int, count: int):
     vertices: list[Vertex] = []
-    for i in range(first, count):
-        vertex_attributes = program.vertex_shader.Attributes(
-            *[buffer[i] for buffer in vertex_buffers])
-        
-        pos, fragment_attributes = program.vertex_shader(vertex_attributes)
+    attribute_fields: list[str] = program.vertex_shader.Attributes._fields
+    for i in range(first, first + count):
+        attribute_values: list = [vertex_buffers[attribute][i]
+                                  for attribute in attribute_fields]
 
-        pos = perspective_divide(pos)
-        pos = viewport_transform(
-            pos, viewport.width, viewport.height)
+        vertex_attributes = program.vertex_shader.Attributes(*attribute_values)
+
+        shaded_vertex: Vertex = program.vertex_shader(vertex_attributes)
+
+        ndc_pos = perspective_divide(shaded_vertex.pos)
+        screen_space_pos = viewport_transform(
+            ndc_pos, viewport.width, viewport.height)
 
         vertex: Vertex = Vertex(
-            pos=pos, fragment_attributes=fragment_attributes)
+            pos=screen_space_pos, fragment_attributes=shaded_vertex.fragment_attributes)
         vertices.append(vertex)
 
     for i in range(0, len(vertices), 3):

@@ -1,3 +1,5 @@
+from typing import NamedTuple
+
 from VectorMath import *
 from Presentation import *
 from Buffer import *
@@ -5,10 +7,10 @@ from RenderTypes import *
 from AssetManager import *
 from MatrixMath import *
 from Renderer import *
-from shaders.First_vert import *
 from dataclasses import dataclass
 
-from typing import NamedTuple
+
+from shaders.PhongLighting import *
 
 
 @dataclass
@@ -18,15 +20,13 @@ class Camera:
     fov: float
     near_plane: float
     far_plane: float
-    
+
     def __init__(self, pos: Vec3, target: Vec3, fov: float, near_plane: float, far_plane: float):
         self.pos = Vec3(*pos)
         self.target = Vec3(*target)
         self.fov = fov
         self.near_plane = near_plane
         self.far_plane = far_plane
-
-
 
 
 class Scene:
@@ -36,7 +36,7 @@ class Scene:
         color_attachment = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
                                   viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
         resolve_attachment = Buffer([Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
-                                  viewport.width, viewport.height, 1, srgb_nonlinear=True)
+                                    viewport.width, viewport.height, 1, srgb_nonlinear=True)
 
         depth_attachment = Buffer([float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
                                   viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
@@ -48,10 +48,10 @@ class Scene:
 
         self.view_matrix: Mat4 = None
         self.projection_matrix: Mat4 = None
-        
+
         self.models: list[list[Mesh]] = []
         self.model_transforms: list[Transform] = []
-        
+
         self.point_lights: list[PointLight] = []
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
@@ -72,43 +72,46 @@ class Scene:
 
     def set_camera(self, cam: Camera) -> int:
         ar: float = self.viewport.width / self.viewport.height
-        
-        self.view_matrix = make_lookat_matrix(cam.pos, cam.target, Vec3(0, 1, 0))
+
+        self.view_matrix = make_lookat_matrix(
+            cam.pos, cam.target, Vec3(0, 1, 0))
         self.projection_matrix = make_projection_matrix(
-                cam.fov / 2, 
-                ar, 
-                cam.near_plane, 
-                cam.far_plane
-            )
-        
+            cam.fov / 2,
+            ar,
+            cam.near_plane,
+            cam.far_plane
+        )
 
     def render(self):
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
-            
-            vertex_uniforms = FirstVertexObject.Uniforms(
+
+            vertex_uniforms = PhongVertexShader.Uniforms(
                 model_matrix=model_matrix, normal_matrix=normal_matrix,
                 view_matrix=self.view_matrix, projection_matrix=self.projection_matrix
             )
-            
-            vertex_shader = FirstVertexObject(vertex_uniforms)
+
+            vertex_shader = PhongVertexShader(vertex_uniforms)
             for mesh in model:
                 material: Material = mesh.material
 
-                fragment_uniforms = FirstFragmentObject.Uniforms(
+                fragment_uniforms = PhongFragmentShader.Uniforms(
                     material=material,
                     point_lights=self.point_lights, directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights
                 )
-                fragment_shader = FirstFragmentObject(fragment_uniforms)
+                fragment_shader = PhongFragmentShader(fragment_uniforms)
 
                 program = ShaderProgram(vertex_shader, fragment_shader)
 
+                vertex_buffer = {"pos": mesh.positions,
+                                 "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
                 draw(self.framebuffer, self.viewport, program,
-                     (mesh.positions, mesh.normals, mesh.tex_uvs), 0, mesh.num_vertices)
+                     vertex_buffer, 0, mesh.num_vertices)
 
-        resolve_buffer(src=self.framebuffer.color_attachment, target=self.framebuffer.resolve_attachment)
+        resolve_buffer(src=self.framebuffer.color_attachment,
+                       target=self.framebuffer.resolve_attachment)
 
     def present(self):
         present_backbuffer(self.framebuffer.resolve_attachment, self.viewport)
