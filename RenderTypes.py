@@ -22,12 +22,35 @@ class Transform:
 
 
 class PointLight:
-    def __init__(self, pos: Vec3, linear_att: float, quadratic_att: float, color: Vec3, specular: Vec3):
+    def __init__(self, pos: Vec3,color: Vec3, intensity: float=1.0):
         self.pos = Vec3(*pos)
 
-        self.linear_att = linear_att
-        self.quadratic_att = quadratic_att
+        self.intensity = intensity
         
         self.color = Vec3(*color)
-        self.specular = Vec3(*specular)
         
+class DirectionalLight:
+    def __init__(self, dir: Vec3, color: Vec3, intensity: float=1.0):
+        self.dir = Vec3(*dir)
+
+        self.intensity = intensity
+        
+        self.color = Vec3(*color)
+
+class SpotLight:
+    def __init__(self, pos: Vec3, dir: Vec3, inner_cutoff_angle: float, outer_cutoff_angle: float, color: Vec3, intensity: float=1.0):
+        """
+            cutoff_angle is in degrees
+        """
+        self.pos = Vec3(*pos)
+        self.dir = Vec3(*dir)
+        
+        self.inner_cutoff_angle = inner_cutoff_angle
+        self.outer_cutoff_angle = outer_cutoff_angle
+        
+        self.cos_inner_cutoff = math.cos(math.radians(inner_cutoff_angle)) 
+        self.cos_outer_cutoff = math.cos(math.radians(outer_cutoff_angle)) 
+
+        self.intensity = intensity
+        
+        self.color = Vec3(*color)

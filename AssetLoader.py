@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 class MaterialAsset:
     ambient_color: Vec3 = Vec3(0.2, 0.2, 0.2)
     diffuse_color: Vec3 = Vec3(1.0, 1.0, 1.0)
-    specular_color: Vec3 = Vec3(0.2, 0.2, 0.2)
+    specular_color: Vec3 = Vec3(0.5, 0.5, 0.5)
 
     ambient_map_path: str = "assets\\defaults\\solid_white.bmp"
     diffuse_map_path: str = "assets\\defaults\\solid_white.bmp"

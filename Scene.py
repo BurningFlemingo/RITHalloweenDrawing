@@ -50,7 +50,10 @@ class Scene:
         
         self.models: list[list[Mesh]] = []
         self.model_transforms: list[Transform] = []
+        
         self.point_lights: list[PointLight] = []
+        self.directional_lights: list[DirectionalLight] = []
+        self.spot_lights: list[SpotLight] = []
 
         setup_turtle(viewport.width, viewport.height)
 
@@ -58,9 +61,13 @@ class Scene:
         self.models.append(self.asset_manager.load_model(path))
         self.model_transforms.append(transform)
 
-    def add_light(self, light: PointLight):
+    def add_light(self, light):
         if (type(light) is PointLight):
             self.point_lights.append(light)
+        if (type(light) is DirectionalLight):
+            self.directional_lights.append(light)
+        if (type(light) is SpotLight):
+            self.spot_lights.append(light)
 
     def set_camera(self, cam: Camera) -> int:
         ar: float = self.viewport.width / self.viewport.height
@@ -87,7 +94,9 @@ class Scene:
                 uniforms: Uniforms = Uniforms(
                     vertex=vertex_uniforms,
                     fragment=FragmentUniforms(
-                        material=material, point_lights=self.point_lights))
+                        material=material,
+                        point_lights=self.point_lights, directional_lights=self.directional_lights,
+                        spot_lights=self.spot_lights))
 
                 draw(self.framebuffer, self.viewport, uniforms,
                      (mesh.positions, mesh.normals, mesh.tex_uvs), 0, mesh.num_vertices)
