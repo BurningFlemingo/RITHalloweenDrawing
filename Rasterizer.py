@@ -56,7 +56,6 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
     w2 += (w2_sample_step.x + w2_px_step.y) // (n_samples_per_axis * 2)
 
     samples_survived_indices: list[int] = []
-
     for v_sample in range(0, n_samples_per_axis):
         row_w1: int = w1
         row_w2: int = w2
@@ -64,9 +63,8 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
             w3: int = det - w1 - w2
 
             if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
-                interpolated_depth: float = (p1.pos.z *
-                                             w1 + p2.pos.z * w2 + p3.pos.z * w3) / det
-
+                interpolated_depth: float = (p1.pos.z * w1 + p2.pos.z * w2 + p3.pos.z * w3) / det
+                
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
 
@@ -108,7 +106,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
         ctx, u_px, v_px, w1, w2)
     if (fb.color_attachment is None):
         return False
-
+    
     n_surviving_samples: int = len(samples_survived_indices)
     if (n_surviving_samples == 0):
         return False
@@ -118,6 +116,9 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     w3 = 1.0 - w1 - w2
     px_depth: float = 1.0 / (w1/p1.pos.w +
                              w2/p2.pos.w + w3/p3.pos.w)
+
+
+
 
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
@@ -143,6 +144,8 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
 
 
 def attrib_pre_divide(p: Vertex) -> NamedTuple:
+    if (p.fragment_attributes is None):
+        return
     return type(p.fragment_attributes)(*[attrib / p.pos.w for attrib in p.fragment_attributes])
 
 
@@ -181,7 +184,18 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     max_y_px: int = math.ceil(max(
         max(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
 
-    if (min_x_px < 0 or max_x_px > fb.color_attachment.width or min_y_px < 0 or max_y_px > fb.color_attachment.height):
+    # add width and height to framebuffer object itself
+    max_attachment_height: int = 0
+    max_attachment_width: int = 0
+    if (fb.color_attachment != None):
+        max_attachment_height = fb.color_attachment.height
+        max_attachment_width = fb.color_attachment.width
+    else: 
+        max_attachment_height = fb.depth_attachment.height
+        max_attachment_width = fb.depth_attachment.width
+
+    # add clipping so you dont have to do this ):
+    if (min_x_px < 0 or max_x_px > max_attachment_width or min_y_px < 0 or max_y_px > max_attachment_height):
         return False
 
     w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,

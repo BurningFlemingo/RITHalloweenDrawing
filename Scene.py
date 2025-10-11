@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 
 from shaders.PhongLighting import *
+from shaders.ShadowPass import *
 
 
 @dataclass
@@ -41,12 +42,23 @@ class Scene:
         depth_attachment = Buffer([float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
                                   viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
 
+        shadow_viewport: Viewport = Viewport(width=viewport.width * 4, height=viewport.height * 4)
+        
+        shadow_map = Buffer([float("inf") for x in range(shadow_viewport.width * shadow_viewport.height)],
+            shadow_viewport.width, shadow_viewport.height, 1, srgb_nonlinear=False)
+
         self.viewport: Viewport = viewport
+        self.shadow_viewport: Viewport = shadow_viewport
+        
         self.asset_manager: AssetManager = AssetManager()
         self.framebuffer: Framebuffer = Framebuffer(
             color_attachment, resolve_attachment, depth_attachment)
+        
+        self.shadow_framebuffer: Framebuffer = Framebuffer(
+            color_attachment=None, resolve_attachment=None, depth_attachment=shadow_map)
 
         self.view_matrix: Mat4 = None
+        self.light_space_matrix: Mat4 = None
         self.projection_matrix: Mat4 = None
 
         self.models: list[list[Mesh]] = []
@@ -69,6 +81,7 @@ class Scene:
             self.directional_lights.append(light)
         if (type(light) is SpotLight):
             self.spot_lights.append(light)
+            self.light_space_matrix = self.projection_matrix * make_lookat_matrix(light.pos, light.pos + light.dir, Vec3(0, 1, 0))
 
     def set_camera(self, cam: Camera) -> int:
         ar: float = self.viewport.width / self.viewport.height
@@ -86,28 +99,43 @@ class Scene:
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
-
-            vertex_uniforms = PhongVertexShader.Uniforms(
-                model_matrix=model_matrix, normal_matrix=normal_matrix,
-                view_matrix=self.view_matrix, projection_matrix=self.projection_matrix
+            
+            shadow_pass_vertex_uniforms = ShadowPassVertexShader.Uniforms(
+                    model_matrix=model_matrix, 
+                    light_space_matrix=self.light_space_matrix
+            )
+            shadow_pass_vertex_shader = ShadowPassVertexShader(shadow_pass_vertex_uniforms)
+            shadow_pass_program = ShaderProgram(
+                    vertex_shader=shadow_pass_vertex_shader, fragment_shader=None
             )
 
-            vertex_shader = PhongVertexShader(vertex_uniforms)
+            phong_vertex_uniforms = PhongVertexShader.Uniforms(
+                model_matrix=model_matrix, normal_matrix=normal_matrix,
+                view_matrix=self.view_matrix, projection_matrix=self.projection_matrix, 
+                light_space_matrix=self.light_space_matrix
+            )
+
+            phong_vertex_shader = PhongVertexShader(phong_vertex_uniforms)
             for mesh in model:
+                vertex_buffer = {"pos": mesh.positions,
+                    "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
+                
+                draw(self.shadow_framebuffer, self.shadow_viewport, shadow_pass_program,
+                    vertex_buffer, 0, mesh.num_vertices)
+                
                 material: Material = mesh.material
 
-                fragment_uniforms = PhongFragmentShader.Uniforms(
+                phong_fragment_uniforms = PhongFragmentShader.Uniforms(
                     material=material,
                     point_lights=self.point_lights, directional_lights=self.directional_lights,
-                    spot_lights=self.spot_lights
+                    spot_lights=self.spot_lights, 
+                    shadow_map=self.shadow_framebuffer.depth_attachment
                 )
-                fragment_shader = PhongFragmentShader(fragment_uniforms)
+                phong_fragment_shader = PhongFragmentShader(phong_fragment_uniforms)
 
-                program = ShaderProgram(vertex_shader, fragment_shader)
+                phong_program = ShaderProgram(phong_vertex_shader, phong_fragment_shader)
 
-                vertex_buffer = {"pos": mesh.positions,
-                                 "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
-                draw(self.framebuffer, self.viewport, program,
+                draw(self.framebuffer, self.viewport, phong_program,
                      vertex_buffer, 0, mesh.num_vertices)
 
         resolve_buffer(src=self.framebuffer.color_attachment,
