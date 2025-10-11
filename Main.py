@@ -17,8 +17,14 @@ def main() -> None:
 
     scene.add_model("assets\\test\\test.obj", model_transform)
 
+    # scene.add_light(SpotLight(
+    #     pos=[1, 0, 2], dir=[-2, 0, 1],
+    #     inner_cutoff_angle=17.0, outer_cutoff_angle=22.0,
+    #     color=[1.0, 1.0, 1], intensity=3.0)
+    # )
+
     scene.add_light(SpotLight(
-        pos=[1, 0, 2], dir=[-2, 0, 1],
+        pos=[0, 0, 0.5], dir=[0, 0, 1],
         inner_cutoff_angle=17.0, outer_cutoff_angle=22.0,
         color=[1.0, 1.0, 1], intensity=3.0)
     )

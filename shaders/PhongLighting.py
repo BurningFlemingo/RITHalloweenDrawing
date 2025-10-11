@@ -12,7 +12,7 @@ class PhongVertexShader:
         normal_matrix: Mat4
         view_matrix: Mat4
         projection_matrix: Mat4
-        
+
         light_space_matrix: Mat4
 
     class Attributes(NamedTuple):
@@ -37,11 +37,12 @@ class PhongVertexShader:
             model_matrix * Vec4(*pos, 1.0)
 
         normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normal, 1.0))[:3])
-        frag_light_space_pos: Vec4 = light_space_matrix * model_matrix * Vec4(*pos, 1.0)
+        frag_light_space_pos: Vec4 = light_space_matrix * \
+            model_matrix * Vec4(*pos, 1.0)
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
-                pos=Vec3(*view_pos[:3]), normal=normal, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos)
+            pos=Vec3(*view_pos[:3]), normal=normal, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos)
 
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
@@ -73,10 +74,17 @@ class PhongFragmentShader:
         pos: Vec3 = attributes.pos
         normal: Vec3 = attributes.normal
         tex_uv: Vec2 = attributes.tex_uv
-        
+
         frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
         frag_light_space_pos /= frag_light_space_pos.w
-        frag_in_shadow: bool = frag_light_space_pos.z > shadow_map.sampleUV(*tex_uv)
+
+        shadow_map_uv: Vec2 = Vec2(
+            (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
+
+        print(shadow_map_uv)
+        frag_in_shadow: bool = frag_light_space_pos.z > shadow_map.sampleUV(
+            *shadow_map_uv)
+
         print(frag_light_space_pos.z, shadow_map.sampleUV(*tex_uv))
 
         normal = normalize(normal)

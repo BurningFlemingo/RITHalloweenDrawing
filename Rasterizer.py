@@ -63,8 +63,9 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
             w3: int = det - w1 - w2
 
             if (((w1 + w1_bias) | (w2 + w2_bias) | (w3 + w3_bias)) > 0):
-                interpolated_depth: float = (p1.pos.z * w1 + p2.pos.z * w2 + p3.pos.z * w3) / det
-                
+                interpolated_depth: float = (
+                    p1.pos.z * w1 + p2.pos.z * w2 + p3.pos.z * w3) / det
+
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
 
@@ -106,7 +107,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
         ctx, u_px, v_px, w1, w2)
     if (fb.color_attachment is None):
         return False
-    
+
     n_surviving_samples: int = len(samples_survived_indices)
     if (n_surviving_samples == 0):
         return False
@@ -116,9 +117,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     w3 = 1.0 - w1 - w2
     px_depth: float = 1.0 / (w1/p1.pos.w +
                              w2/p2.pos.w + w3/p3.pos.w)
-
-
-
 
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
@@ -190,7 +188,7 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     if (fb.color_attachment != None):
         max_attachment_height = fb.color_attachment.height
         max_attachment_width = fb.color_attachment.width
-    else: 
+    else:
         max_attachment_height = fb.depth_attachment.height
         max_attachment_width = fb.depth_attachment.width
 
