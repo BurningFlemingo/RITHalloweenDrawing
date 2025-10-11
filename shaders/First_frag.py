@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from typing import Callable
 
 from VectorMath import *
 from MatrixMath import *
@@ -6,17 +7,40 @@ from RenderTypes import *
 from AssetLoader import *
 
 
-class FragmentAttributes(NamedTuple):
-    pos: Vec3
-    normal: Vec3
-    tex_uv: Vec2
+FragShaderObject = Callable[[Any], Vec4]
 
 
-class FragmentUniforms(NamedTuple):
-    material: Material
-    point_lights: list[PointLight]
-    directional_lights: list[DirectionalLight]
-    spot_lights: list[SpotLight]
+class FirstFragmentObject:
+    class Uniforms(NamedTuple):
+        material: Material
+        point_lights: list[PointLight]
+        directional_lights: list[DirectionalLight]
+        spot_lights: list[SpotLight]
+        
+    class Attributes(NamedTuple):
+        pos: Vec3
+        normal: Vec3
+        tex_uv: Vec2
+
+    def __init__(self, uniforms: Uniforms):
+        self.uniforms = uniforms
+
+    def __call__(self, attributes: Attributes) -> Vec4:
+        material, point_lights, directional_lights, spot_lights = self.uniforms
+        pos, normal, tex_uv = attributes
+        
+        normal = normalize(normal)
+        view_dir: Vec3 = normalize(pos * -1)
+
+        final_color: Vec3 = Vec3(0.0, 0.0, 0.0)
+        for light in point_lights:
+            final_color += calc_point_light_contribution(light, pos, normal, tex_uv, material, view_dir)
+        for light in directional_lights:
+            final_color += calc_directional_light_contribution(light, pos, normal, tex_uv, material, view_dir)
+        for light in spot_lights:
+            final_color += calc_spot_light_contribution(light, pos, normal, tex_uv, material, view_dir)
+
+        return Vec4(*final_color, 1.0)
 
 
 def calc_point_light_contribution(light: PointLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3) -> Vec3:
@@ -84,19 +108,4 @@ def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: V
         
         return hadamard(light.color, ambient + diffuse + specular) * attenuation
 
-def fragment_shader(uniforms: FragmentUniforms, attributes: FragmentAttributes) -> Vec4:
-    material, point_lights, directional_lights, spot_lights = uniforms
-    pos, normal, tex_uv = attributes
-    
-    normal = normalize(normal)
-    view_dir: Vec3 = normalize(pos * -1)
 
-    final_color: Vec3 = Vec3(0.0, 0.0, 0.0)
-    for light in point_lights:
-        final_color += calc_point_light_contribution(light, pos, normal, tex_uv, material, view_dir)
-    for light in directional_lights:
-        final_color += calc_directional_light_contribution(light, pos, normal, tex_uv, material, view_dir)
-    for light in spot_lights:
-        final_color += calc_spot_light_contribution(light, pos, normal, tex_uv, material, view_dir)
-
-    return Vec4(*final_color, 1.0)

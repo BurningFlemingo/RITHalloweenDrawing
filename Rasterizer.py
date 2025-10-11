@@ -97,11 +97,13 @@ def interpolate_attributes(p1_attrib: tuple, p2_attrib: tuple, p3_attrib: tuple,
     return tuple(attributes)
 
 
-def shade_pixel(ctx: RasterCtx, uniforms: tuple, u_px: int, v_px: int, w1: int, w2: int) -> bool:
+def shade_pixel(ctx: RasterCtx, fragment_shader: FragShaderObject, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
     samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
         ctx, u_px, v_px, w1, w2)
+    if (fb.color_attachment is None):
+        return False
 
     n_surviving_samples: int = len(samples_survived_indices)
     if (n_surviving_samples == 0):
@@ -116,7 +118,7 @@ def shade_pixel(ctx: RasterCtx, uniforms: tuple, u_px: int, v_px: int, w1: int, 
     interpolated_attributes: tuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
 
-    color: Vec4 = fragment_shader(uniforms, interpolated_attributes)
+    color: Vec4 = fragment_shader(interpolated_attributes)
     color = Vec4(
         min(max(color.x, 0.0), 1.0),
         min(max(color.y, 0.0), 1.0),
@@ -140,7 +142,7 @@ def attrib_pre_divide(p: Vertex) -> tuple:
     return tuple([attrib / p.pos.w for attrib in p.fragment_attributes])
 
 
-def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+def rasterize_triangle(fb: Framebuffer, fragment_shader: FragShaderObject, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
 
     # pre-dividing so inner loop isnt calculating this a ton for no reason
@@ -199,7 +201,7 @@ def rasterize_triangle(fb: Framebuffer, uniforms: tuple, p1: Vertex, p2: Vertex,
         row_w1: float = w1
         row_w2: float = w2
         for u_px in range(min_x_px, max_x_px):
-            shade_pixel(ctx, uniforms, u_px, v_px, w1, w2)
+            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
 
             w1 += w1_px_step.x
             w2 += w2_px_step.x

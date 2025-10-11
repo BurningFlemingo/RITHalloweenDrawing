@@ -5,6 +5,7 @@ from RenderTypes import *
 from AssetManager import *
 from MatrixMath import *
 from Renderer import *
+from shaders.First_vert import *
 from dataclasses import dataclass
 
 from typing import NamedTuple
@@ -85,20 +86,26 @@ class Scene:
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
-            vertex_uniforms = VertexUniforms(
+            
+            vertex_uniforms = FirstVertexObject.Uniforms(
                 model_matrix=model_matrix, normal_matrix=normal_matrix,
-                view_matrix=self.view_matrix, projection_matrix=self.projection_matrix)
+                view_matrix=self.view_matrix, projection_matrix=self.projection_matrix
+            )
+            
+            vertex_shader = FirstVertexObject(vertex_uniforms)
             for mesh in model:
                 material: Material = mesh.material
 
-                uniforms: Uniforms = Uniforms(
-                    vertex=vertex_uniforms,
-                    fragment=FragmentUniforms(
-                        material=material,
-                        point_lights=self.point_lights, directional_lights=self.directional_lights,
-                        spot_lights=self.spot_lights))
+                fragment_uniforms = FirstFragmentObject.Uniforms(
+                    material=material,
+                    point_lights=self.point_lights, directional_lights=self.directional_lights,
+                    spot_lights=self.spot_lights
+                )
+                fragment_shader = FirstFragmentObject(fragment_uniforms)
 
-                draw(self.framebuffer, self.viewport, uniforms,
+                program = ShaderProgram(vertex_shader, fragment_shader)
+
+                draw(self.framebuffer, self.viewport, program,
                      (mesh.positions, mesh.normals, mesh.tex_uvs), 0, mesh.num_vertices)
 
         resolve_buffer(src=self.framebuffer.color_attachment, target=self.framebuffer.resolve_attachment)

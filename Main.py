@@ -1,5 +1,6 @@
 from Scene import *
 from RenderTypes import *
+from shaders.First_vert import *
 
 WINDOW_WIDTH: int = 1920//2
 WINDOW_HEIGHT: int = 1080//2
