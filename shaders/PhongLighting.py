@@ -81,11 +81,15 @@ class PhongFragmentShader:
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
 
-        print(shadow_map_uv)
-        frag_in_shadow: bool = frag_light_space_pos.z > shadow_map.sampleUV(
-            *shadow_map_uv)
+        bias: float = 0.0001
+        current_depth: float = frag_light_space_pos.z
+        
+        frag_in_shadow: bool = False
+        if(shadow_map_uv.x <= 1.0 and shadow_map_uv.x >= 0 and shadow_map_uv.y <= 1.0 and shadow_map_uv.y >= 0):
+            closest_depth: float = shadow_map.sampleUV(*shadow_map_uv)
+            
+            frag_in_shadow = (current_depth - bias) > closest_depth
 
-        print(frag_light_space_pos.z, shadow_map.sampleUV(*tex_uv))
 
         normal = normalize(normal)
         view_dir: Vec3 = normalize(pos * -1)
@@ -153,7 +157,7 @@ def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: V
     shadow_scalar = 0 if frag_in_shadow else 1
 
     ambient: Vec3 = hadamard(
-        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv)) * 0.05
+        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv)) * 0
 
     cos_light_dir: float = dot(light_dir * -1, spot_dir)
     intensity: float = (cos_light_dir - light.cos_outer_cutoff) / \

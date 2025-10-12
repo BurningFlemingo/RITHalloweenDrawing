@@ -73,6 +73,9 @@ def make_lookat_matrix(eye: Vec3, target: Vec3, up: Vec3) -> Mat4:
     z_basis: Vec3 = normalize(target - eye)
     x_basis: Vec3 = normalize(cross(up, z_basis))
     y_basis: Vec3 = normalize(cross(z_basis, x_basis))
+    print(z_basis)
+    print(x_basis)
+    print(y_basis)
     return Mat4(
         Vec4(x_basis.x, x_basis.y, x_basis.z, -dot(x_basis, eye)),
         Vec4(y_basis.x, y_basis.y, y_basis.z, -dot(y_basis, eye)),

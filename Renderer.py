@@ -23,8 +23,8 @@ def perspective_divide(vec: Vec4) -> Vec4:
 
 
 def viewport_transform(ndc: Vec4, width: int, height: int) -> Vec4:
-    x_px: float = ((ndc.x + 1.0) * 0.5) * width
-    y_px: float = ((ndc.y + 1.0) * 0.5) * height
+    x_px: float = ((ndc.x + 1.0) * 0.5) * (width - 1)
+    y_px: float = ((ndc.y + 1.0) * 0.5) * (height - 1)
     return Vec4(x_px, y_px, ndc.z, ndc.w)
 
 

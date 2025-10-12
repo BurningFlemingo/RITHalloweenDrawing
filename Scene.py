@@ -43,13 +43,13 @@ class Scene:
                                   viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
 
         shadow_viewport: Viewport = Viewport(
-            width=viewport.width * 4, height=viewport.height * 4)
+            width=viewport.width, height=viewport.height)
 
-        shadow_map = Buffer([float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-                            viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
+        shadow_map = Buffer([float("inf") for x in range(shadow_viewport.width * shadow_viewport.height)],
+                            shadow_viewport.width, shadow_viewport.height, 1, srgb_nonlinear=False)
 
         self.viewport: Viewport = viewport
-        self.shadow_viewport: Viewport = viewport
+        self.shadow_viewport: Viewport = shadow_viewport
 
         self.asset_manager: AssetManager = AssetManager()
         self.framebuffer: Framebuffer = Framebuffer(
@@ -82,10 +82,15 @@ class Scene:
             self.directional_lights.append(light)
         if (type(light) is SpotLight):
             self.spot_lights.append(light)
-            # self.light_space_matrix = self.projection_matrix * \
-            #     make_lookat_matrix(light.pos, light.pos +
-            #                        light.dir, Vec3(0, 1, 0))
-            self.light_space_matrix = self.projection_matrix * self.view_matrix
+            light_projection_mat: Mat4 = make_projection_matrix(
+                90 / 2,
+                self.shadow_viewport.width / self.shadow_viewport.height,
+                0.01,
+                10)
+            light_view_mat: Mat4 = make_lookat_matrix(
+                    light.pos, light.pos + light.dir, Vec3(0, 1, 0))
+            
+            self.light_space_matrix = light_projection_mat * light_view_mat
 
     def set_camera(self, cam: Camera) -> int:
         ar: float = self.viewport.width / self.viewport.height
