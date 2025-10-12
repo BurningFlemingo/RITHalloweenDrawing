@@ -17,11 +17,11 @@ def main() -> None:
 
     scene.add_model("assets\\test\\test.obj", model_transform)
 
-    scene.add_light(PointLight(pos=[0, 5, 0], color=[1.0, 1.0, 1.0], intensity=1.0))
+    # scene.add_light(PointLight(pos=[0, 5, 0], color=[1.0, 1.0, 1.0], intensity=0.8))
 
-    cube_transform = Transform(pos=[0.12, 0.5, 4.0], rot=[0, 0, 0], scale=[0.025, 0.025, 0.025])
+    cube_transform = Transform(pos=camera.pos + Vec3(0.5, 0.5, 1.0), rot=[0, 0, 0], scale=[0.025, 0.025, 0.025])
     scene.add_light(SpotLight(
-        pos=cube_transform.pos, dir=[0, -0.5, -0.2],
+        pos=cube_transform.pos, dir=[0, 0.0, 1.0],
         inner_cutoff_angle=10.0, outer_cutoff_angle=60.0,
         color=[1.0, 0.3, 1], intensity=3.0)
     )

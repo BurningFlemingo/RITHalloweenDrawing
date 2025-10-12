@@ -109,18 +109,34 @@ class Scene:
             cam.far_plane
         )
 
-    def render(self):
+    def shadow_pass(self):
+        self.pipeline.bind_viewport(self.shadow_viewport)
+        self.pipeline.bind_framebuffer(self.shadow_framebuffer)
+        for (model, transform) in zip(self.models, self.model_transforms):
+            model_matrix: Mat4 = make_model_matrix(transform)
+
+            uniforms = ShadowPassVertexShader.Uniforms(
+                model_matrix=model_matrix,
+                light_space_matrix=self.light_space_matrix
+            )
+            vertex_shader = ShadowPassVertexShader(uniforms)
+            self.pipeline.bind_shaders(vertex_shader)
+
+            positions: list[Vec4] = []
+            for mesh in model: 
+                positions += mesh.positions
+
+            vertex_buffer = {"pos": positions}
+            self.pipeline.bind_vertex_buffer(vertex_buffer)
+            self.pipeline.draw(mesh.num_vertices, 0)
+
+    def lighting_pass(self):
+        self.pipeline.bind_viewport(self.viewport)
+        self.pipeline.bind_framebuffer(self.framebuffer)
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
 
-            shadow_pass_vertex_uniforms = ShadowPassVertexShader.Uniforms(
-                model_matrix=model_matrix,
-                light_space_matrix=self.light_space_matrix
-            )
-            shadow_pass_vertex_shader = ShadowPassVertexShader(
-                shadow_pass_vertex_uniforms)
-            
             phong_vertex_uniforms = PhongVertexShader.Uniforms(
                 model_matrix=model_matrix, normal_matrix=normal_matrix,
                 view_matrix=self.view_matrix, projection_matrix=self.projection_matrix,
@@ -130,11 +146,6 @@ class Scene:
             phong_vertex_shader = PhongVertexShader(phong_vertex_uniforms)
             for mesh in model:
                 vertex_buffer = {"pos": mesh.positions, "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
-                self.pipeline.bind_viewport(self.shadow_viewport)
-                self.pipeline.bind_shaders(shadow_pass_vertex_shader)
-                self.pipeline.bind_framebuffer(self.shadow_framebuffer)
-                self.pipeline.bind_vertex_buffer(vertex_buffer)
-                self.pipeline.draw(mesh.num_vertices, 0)
                 
                 phong_fragment_uniforms = PhongFragmentShader.Uniforms(
                     material=mesh.material,
@@ -144,13 +155,15 @@ class Scene:
                 )
                 phong_fragment_shader = PhongFragmentShader(phong_fragment_uniforms)
 
-                self.pipeline.bind_viewport(self.viewport)
-                self.pipeline.bind_framebuffer(self.framebuffer)
+
+                self.pipeline.bind_vertex_buffer(vertex_buffer)
                 self.pipeline.bind_shaders(phong_vertex_shader, phong_fragment_shader)
                 self.pipeline.draw(mesh.num_vertices, 0)
 
-            resolve_buffer(src=self.framebuffer.color_attachments[0],
-                           target=self.framebuffer.resolve_attachments[0])
+    def render(self):
+        self.shadow_pass()
+        self.lighting_pass()
+        resolve_buffer(src=self.framebuffer.color_attachments[0], target=self.framebuffer.resolve_attachments[0])
 
     def present(self):
         present_backbuffer(self.framebuffer.resolve_attachments[0], self.viewport)
