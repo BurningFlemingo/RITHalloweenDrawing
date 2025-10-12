@@ -9,60 +9,41 @@ from Presentation import Viewport
 
 VertexShader = Callable[[Any], Vertex]
 
-class GraphicsPipeline: 
-    def __init(self):
-        self.reset()
 
-    def reset(self):
-        self.framebuffer: Framebuffer = None
-        self.viewport: Framebuffer = None
+class GraphicsPipeline(NamedTuple):
+    viewport: Viewport
+    framebuffer: Framebuffer
 
-        self.vertex_buffer = None
-        
-        self.vertex_shader = None
-        self.fragment_shader = None
 
-    def bind_framebuffer(self, framebuffer: Framebuffer):
-        self.framebuffer = framebuffer
+def draw(pipeline: GraphicsPipeline, vertex_buffer: dict[str, list], vertex_shader: VertexShader, fragment_shader: FragmentShader | None, vertex_count: int, vertex_offset: int):
+    vertices: list[Vertex] = []
+    attribute_fields: list[str] = vertex_shader.Attributes._fields
+    for i in range(vertex_offset, vertex_count + vertex_offset):
+        attribute_values: list = [vertex_buffer[attribute][i]
+                                  for attribute in attribute_fields]
 
-    def bind_vertex_buffer(self, vertex_buffer: dict[str, list]):
-        self.vertex_buffer = vertex_buffer
+        vertex_attributes = vertex_shader.Attributes(
+            *attribute_values)
 
-    def bind_shaders(self, vertex_shader: VertexShader, fragment_shader: FragmentShader=None):
-        self.vertex_shader = vertex_shader
-        self.fragment_shader = fragment_shader
+        shaded_vertex: Vertex = vertex_shader(vertex_attributes)
 
-    def bind_viewport(self, viewport: Viewport):
-        self.viewport = viewport
+        ndc_pos = perspective_divide(shaded_vertex.pos)
+        screen_space_pos = viewport_transform(
+            ndc_pos, pipeline.viewport.width, pipeline.viewport.height)
 
-    def draw(self, vertex_count: int, vertex_offset: int):
-        vertices: list[Vertex] = []
-        attribute_fields: list[str] = self.vertex_shader.Attributes._fields
-        for i in range(vertex_offset, vertex_count + vertex_offset):
-            attribute_values: list = [self.vertex_buffer[attribute][i]
-                                      for attribute in attribute_fields]
+        vertex: Vertex = Vertex(
+            pos=screen_space_pos, fragment_attributes=shaded_vertex.fragment_attributes)
+        vertices.append(vertex)
 
-            vertex_attributes = self.vertex_shader.Attributes(*attribute_values)
+    for i in range(0, len(vertices), 3):
+        v1: Vertex = vertices[i]
+        v2: Vertex = vertices[i + 1]
+        v3: Vertex = vertices[i + 2]
 
-            shaded_vertex: Vertex = self.vertex_shader(vertex_attributes)
+        rasterize_triangle(
+            pipeline.framebuffer, fragment_shader, v1, v2, v3)
 
-            ndc_pos = perspective_divide(shaded_vertex.pos)
-            screen_space_pos = viewport_transform(
-                ndc_pos, self.viewport.width, self.viewport.height)
 
-            vertex: Vertex = Vertex(
-                pos=screen_space_pos, fragment_attributes=shaded_vertex.fragment_attributes)
-            vertices.append(vertex)
-
-        for i in range(0, len(vertices), 3):
-            v1: Vertex = vertices[i]
-            v2: Vertex = vertices[i + 1]
-            v3: Vertex = vertices[i + 2]
-
-            rasterize_triangle(
-                self.framebuffer, self.fragment_shader, v1, v2, v3)
-
-            
 def perspective_divide(vec: Vec4) -> Vec4:
     """
         w component is saved.

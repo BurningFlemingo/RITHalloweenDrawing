@@ -61,6 +61,16 @@ class Scene:
             width=shadow_map.width, height=shadow_map.height,
             n_samples_per_axis=shadow_map.n_samples_per_axis)
 
+        self.shadow_pipeline: GraphicsPipeline = GraphicsPipeline(
+            viewport=shadow_viewport,
+            framebuffer=self.shadow_framebuffer
+        )
+
+        self.lighting_pipeline: GraphicsPipeline = GraphicsPipeline(
+            viewport=viewport,
+            framebuffer=self.framebuffer
+        )
+
         self.view_matrix: Mat4 = None
         self.light_space_matrix: Mat4 = None
         self.projection_matrix: Mat4 = None
@@ -71,8 +81,6 @@ class Scene:
         self.point_lights: list[PointLight] = []
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
-
-        self.pipeline: GraphicsPipeline = GraphicsPipeline()
 
         setup_turtle(viewport.width, viewport.height)
 
@@ -93,8 +101,8 @@ class Scene:
                 0.01,
                 10)
             light_view_mat: Mat4 = make_lookat_matrix(
-                    light.pos, light.pos + light.dir, Vec3(0, 1, 0))
-            
+                light.pos, light.pos + light.dir, Vec3(0, 1, 0))
+
             self.light_space_matrix = light_projection_mat * light_view_mat
 
     def set_camera(self, cam: Camera):
@@ -110,63 +118,67 @@ class Scene:
         )
 
     def shadow_pass(self):
-        self.pipeline.bind_viewport(self.shadow_viewport)
-        self.pipeline.bind_framebuffer(self.shadow_framebuffer)
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
 
-            uniforms = ShadowPassVertexShader.Uniforms(
+            vertex_shader = ShadowPassVertexShader(
                 model_matrix=model_matrix,
                 light_space_matrix=self.light_space_matrix
             )
-            vertex_shader = ShadowPassVertexShader(uniforms)
-            self.pipeline.bind_shaders(vertex_shader)
 
-            positions: list[Vec4] = []
-            for mesh in model: 
-                positions += mesh.positions
-
-            vertex_buffer = {"pos": positions}
-            self.pipeline.bind_vertex_buffer(vertex_buffer)
-            self.pipeline.draw(mesh.num_vertices, 0)
+            for mesh in model:
+                vertex_buffer = {"pos": mesh.positions}
+                draw(
+                    pipeline=self.shadow_pipeline,
+                    vertex_buffer=vertex_buffer,
+                    vertex_shader=vertex_shader,
+                    fragment_shader=None,
+                    vertex_count=mesh.num_vertices,
+                    vertex_offset=0
+                )
 
     def lighting_pass(self):
-        self.pipeline.bind_viewport(self.viewport)
-        self.pipeline.bind_framebuffer(self.framebuffer)
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
 
-            phong_vertex_uniforms = PhongVertexShader.Uniforms(
-                model_matrix=model_matrix, normal_matrix=normal_matrix,
-                view_matrix=self.view_matrix, projection_matrix=self.projection_matrix,
+            phong_vertex_shader = PhongVertexShader(
+                model_matrix=model_matrix,
+                normal_matrix=normal_matrix,
+                view_matrix=self.view_matrix,
+                projection_matrix=self.projection_matrix,
                 light_space_matrix=self.light_space_matrix
             )
-
-            phong_vertex_shader = PhongVertexShader(phong_vertex_uniforms)
             for mesh in model:
-                vertex_buffer = {"pos": mesh.positions, "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
-                
-                phong_fragment_uniforms = PhongFragmentShader.Uniforms(
+                vertex_buffer = {"pos": mesh.positions,
+                                 "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
+
+                phong_fragment_shader = PhongFragmentShader(
                     material=mesh.material,
-                    point_lights=self.point_lights, directional_lights=self.directional_lights,
+                    point_lights=self.point_lights,
+                    directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
                     shadow_map=self.shadow_framebuffer.depth_attachment
                 )
-                phong_fragment_shader = PhongFragmentShader(phong_fragment_uniforms)
 
-
-                self.pipeline.bind_vertex_buffer(vertex_buffer)
-                self.pipeline.bind_shaders(phong_vertex_shader, phong_fragment_shader)
-                self.pipeline.draw(mesh.num_vertices, 0)
+                draw(
+                    pipeline=self.lighting_pipeline,
+                    vertex_buffer=vertex_buffer,
+                    vertex_shader=phong_vertex_shader,
+                    fragment_shader=phong_fragment_shader,
+                    vertex_count=mesh.num_vertices,
+                    vertex_offset=0
+                )
 
     def render(self):
         self.shadow_pass()
         self.lighting_pass()
-        resolve_buffer(src=self.framebuffer.color_attachments[0], target=self.framebuffer.resolve_attachments[0])
+        resolve_buffer(
+            src=self.framebuffer.color_attachments[0], target=self.framebuffer.resolve_attachments[0])
 
     def present(self):
-        present_backbuffer(self.framebuffer.resolve_attachments[0], self.viewport)
+        present_backbuffer(
+            self.framebuffer.resolve_attachments[0], self.viewport)
 
     def finish(self):
         turtle.done()

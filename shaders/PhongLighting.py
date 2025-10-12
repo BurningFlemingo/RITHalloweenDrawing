@@ -3,18 +3,10 @@ from typing import NamedTuple
 from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
-from AssetLoader import *
+from AssetManager import *
 
 
 class PhongVertexShader:
-    class Uniforms(NamedTuple):
-        model_matrix: Mat4
-        normal_matrix: Mat4
-        view_matrix: Mat4
-        projection_matrix: Mat4
-
-        light_space_matrix: Mat4
-
     class Attributes(NamedTuple):
         pos: Vec3
         normal: Vec3
@@ -26,11 +18,20 @@ class PhongVertexShader:
         tex_uv: Vec2
         frag_light_space_pos: Vec4
 
-    def __init__(self, uniforms: Uniforms):
-        self.uniforms = uniforms
+    def __init__(self, model_matrix: Mat4, normal_matrix: Mat4, view_matrix: Mat4, projection_matrix: Mat4, light_space_matrix: Mat4):
+        self.model_matrix = model_matrix
+        self.normal_matrix = normal_matrix
+        self.view_matrix = view_matrix
+        self.projection_matrix = projection_matrix
+        self.light_space_matrix = light_space_matrix
 
     def __call__(self, in_attributes: Attributes) -> Vertex:
-        model_matrix, normal_matrix, view_matrix, projection_matrix, light_space_matrix = self.uniforms
+        model_matrix: Mat4 = self.model_matrix
+        normal_matrix: Mat4 = self.normal_matrix
+        view_matrix: Mat4 = self.view_matrix
+        projection_matrix: Mat4 = self.projection_matrix
+        light_space_matrix: Mat4 = self.light_space_matrix
+
         pos, normal, tex_uv = in_attributes
 
         view_pos: Vec4 = view_matrix * \
@@ -48,28 +49,22 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    class Uniforms(NamedTuple):
-        material: Material
-        point_lights: list[PointLight]
-        directional_lights: list[DirectionalLight]
-        spot_lights: list[SpotLight]
-
-        shadow_map: Buffer
-
     class Attributes(NamedTuple):
         pos: Vec3
         normal: Vec3
         tex_uv: Vec2
         frag_light_space_pos: Vec4
 
-    def __init__(self, uniforms: Uniforms):
-        self.uniforms = uniforms
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Buffer):
+        self.material = material
+        self.point_lights = point_lights
+        self.directional_lights = directional_lights
+        self.spot_lights = spot_lights
+        self.shadow_map = shadow_map
 
     def __call__(self, attributes: Attributes) -> list[Vec4]:
-        uniforms: Uniforms = self.uniforms
-
-        material: Material = uniforms.material
-        shadow_map: Buffer = uniforms.shadow_map
+        material: Material = self.material
+        shadow_map: Buffer = self.shadow_map
 
         pos: Vec3 = attributes.pos
         normal: Vec3 = attributes.normal
@@ -83,25 +78,24 @@ class PhongFragmentShader:
 
         bias: float = 0.0001
         current_depth: float = frag_light_space_pos.z
-        
-        frag_in_shadow: bool = False
-        if(shadow_map_uv.x <= 1.0 and shadow_map_uv.x >= 0 and shadow_map_uv.y <= 1.0 and shadow_map_uv.y >= 0):
-            closest_depth: float = shadow_map.sampleUV(*shadow_map_uv)
-            
-            frag_in_shadow = (current_depth - bias) > closest_depth
 
+        frag_in_shadow: bool = False
+        if (shadow_map_uv.x <= 1.0 and shadow_map_uv.x >= 0 and shadow_map_uv.y <= 1.0 and shadow_map_uv.y >= 0):
+            closest_depth: float = shadow_map.sampleUV(*shadow_map_uv)
+
+            frag_in_shadow = (current_depth - bias) > closest_depth
 
         normal = normalize(normal)
         view_dir: Vec3 = normalize(pos * -1)
 
         final_color: Vec3 = Vec3(0.0, 0.0, 0.0)
-        for light in uniforms.point_lights:
+        for light in self.point_lights:
             final_color += calc_point_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir)
-        for light in uniforms.directional_lights:
+        for light in self.directional_lights:
             final_color += calc_directional_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir)
-        for light in uniforms.spot_lights:
+        for light in self.spot_lights:
             final_color += calc_spot_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir, frag_in_shadow)
 

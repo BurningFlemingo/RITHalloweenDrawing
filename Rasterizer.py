@@ -131,7 +131,8 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
             min(max(color.z, 0.0), 1.0),
             min(max(color.w, 0.0), 1.0))
 
-        px_index: int = (v_px * fb.color_attachments[i].width + u_px) * n_samples
+        px_index: int = (
+            v_px * fb.color_attachments[i].width + u_px) * n_samples
         for sample_index in samples_survived_indices:
             fb.color_attachments[i].data[px_index + sample_index] = color
 
