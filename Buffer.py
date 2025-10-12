@@ -31,9 +31,14 @@ class Buffer(NamedTuple):
 
 
 class Framebuffer(NamedTuple):
-    color_attachment: Buffer
-    resolve_attachment: Buffer
+    color_attachments: list[Buffer]
+    resolve_attachments: list[Buffer]
     depth_attachment: Buffer
+    
+    width: int
+    height: int
+    
+    n_samples_per_axis: int
 
 
 def resolve_buffer(src: Buffer, target: Buffer):

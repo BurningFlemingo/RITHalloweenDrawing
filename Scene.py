@@ -53,10 +53,13 @@ class Scene:
 
         self.asset_manager: AssetManager = AssetManager()
         self.framebuffer: Framebuffer = Framebuffer(
-            color_attachment, resolve_attachment, depth_attachment)
+            [color_attachment], [resolve_attachment], depth_attachment,
+            color_attachment.width, color_attachment.height, color_attachment.n_samples_per_axis)
 
         self.shadow_framebuffer: Framebuffer = Framebuffer(
-            color_attachment=None, resolve_attachment=None, depth_attachment=shadow_map)
+            color_attachments=None, resolve_attachments=None, depth_attachment=shadow_map,
+            width=shadow_map.width, height=shadow_map.height,
+            n_samples_per_axis=shadow_map.n_samples_per_axis)
 
         self.view_matrix: Mat4 = None
         self.light_space_matrix: Mat4 = None
@@ -68,6 +71,8 @@ class Scene:
         self.point_lights: list[PointLight] = []
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
+
+        self.pipeline: GraphicsPipeline = GraphicsPipeline()
 
         setup_turtle(viewport.width, viewport.height)
 
@@ -92,7 +97,7 @@ class Scene:
             
             self.light_space_matrix = light_projection_mat * light_view_mat
 
-    def set_camera(self, cam: Camera) -> int:
+    def set_camera(self, cam: Camera):
         ar: float = self.viewport.width / self.viewport.height
 
         self.view_matrix = make_lookat_matrix(
@@ -115,10 +120,7 @@ class Scene:
             )
             shadow_pass_vertex_shader = ShadowPassVertexShader(
                 shadow_pass_vertex_uniforms)
-            shadow_pass_program = ShaderProgram(
-                vertex_shader=shadow_pass_vertex_shader, fragment_shader=None
-            )
-
+            
             phong_vertex_uniforms = PhongVertexShader.Uniforms(
                 model_matrix=model_matrix, normal_matrix=normal_matrix,
                 view_matrix=self.view_matrix, projection_matrix=self.projection_matrix,
@@ -127,34 +129,31 @@ class Scene:
 
             phong_vertex_shader = PhongVertexShader(phong_vertex_uniforms)
             for mesh in model:
-                vertex_buffer = {"pos": mesh.positions,
-                                 "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
-
-                draw(self.shadow_framebuffer, self.shadow_viewport, shadow_pass_program,
-                     vertex_buffer, 0, mesh.num_vertices)
-
-                material: Material = mesh.material
-
+                vertex_buffer = {"pos": mesh.positions, "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
+                self.pipeline.bind_viewport(self.shadow_viewport)
+                self.pipeline.bind_shaders(shadow_pass_vertex_shader)
+                self.pipeline.bind_framebuffer(self.shadow_framebuffer)
+                self.pipeline.bind_vertex_buffer(vertex_buffer)
+                self.pipeline.draw(mesh.num_vertices, 0)
+                
                 phong_fragment_uniforms = PhongFragmentShader.Uniforms(
-                    material=material,
+                    material=mesh.material,
                     point_lights=self.point_lights, directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
                     shadow_map=self.shadow_framebuffer.depth_attachment
                 )
-                phong_fragment_shader = PhongFragmentShader(
-                    phong_fragment_uniforms)
+                phong_fragment_shader = PhongFragmentShader(phong_fragment_uniforms)
 
-                phong_program = ShaderProgram(
-                    phong_vertex_shader, phong_fragment_shader)
+                self.pipeline.bind_viewport(self.viewport)
+                self.pipeline.bind_framebuffer(self.framebuffer)
+                self.pipeline.bind_shaders(phong_vertex_shader, phong_fragment_shader)
+                self.pipeline.draw(mesh.num_vertices, 0)
 
-                draw(self.framebuffer, self.viewport, phong_program,
-                     vertex_buffer, 0, mesh.num_vertices)
-
-        resolve_buffer(src=self.framebuffer.color_attachment,
-                       target=self.framebuffer.resolve_attachment)
+            resolve_buffer(src=self.framebuffer.color_attachments[0],
+                           target=self.framebuffer.resolve_attachments[0])
 
     def present(self):
-        present_backbuffer(self.framebuffer.resolve_attachment, self.viewport)
+        present_backbuffer(self.framebuffer.resolve_attachments[0], self.viewport)
 
     def finish(self):
         turtle.done()

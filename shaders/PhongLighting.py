@@ -65,7 +65,7 @@ class PhongFragmentShader:
     def __init__(self, uniforms: Uniforms):
         self.uniforms = uniforms
 
-    def __call__(self, attributes: Attributes) -> Vec4:
+    def __call__(self, attributes: Attributes) -> list[Vec4]:
         uniforms: Uniforms = self.uniforms
 
         material: Material = uniforms.material
@@ -105,7 +105,7 @@ class PhongFragmentShader:
             final_color += calc_spot_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir, frag_in_shadow)
 
-        return Vec4(*final_color, 1.0)
+        return [Vec4(*final_color, 1.0)]
 
 
 def calc_point_light_contribution(light: PointLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3) -> Vec3:

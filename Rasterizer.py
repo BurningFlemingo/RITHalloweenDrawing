@@ -5,7 +5,7 @@ from MatrixMath import *
 from RenderTypes import *
 
 
-FragmentShader = Callable[[Any], Vec4]
+FragmentShader = Callable[[Any], list[Vec4]]
 
 
 class RasterCtx(NamedTuple):
@@ -38,7 +38,7 @@ def is_covered_edge(edge: Vec4) -> bool:
 
 def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (list[int], int, int):
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
-    n_samples_per_axis: int = fb.depth_attachment.n_samples_per_axis
+    n_samples_per_axis: int = fb.n_samples_per_axis
     n_samples: int = n_samples_per_axis ** 2
 
     px_index: int = (v_px * fb.depth_attachment.width +
@@ -105,7 +105,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
 
     samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
         ctx, u_px, v_px, w1, w2)
-    if (fb.color_attachment is None):
+    if (fb.color_attachments is None):
         return False
 
     n_surviving_samples: int = len(samples_survived_indices)
@@ -121,18 +121,19 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
 
-    color: Vec4 = fragment_shader(interpolated_attributes)
-    color = Vec4(
-        min(max(color.x, 0.0), 1.0),
-        min(max(color.y, 0.0), 1.0),
-        min(max(color.z, 0.0), 1.0),
-        min(max(color.w, 0.0), 1.0))
+    colors: list[Vec4] = fragment_shader(interpolated_attributes)
+    n_samples: int = fb.n_samples_per_axis ** 2
+    for i in range(0, len(colors)):
+        color: Vec4 = colors[i]
+        color = Vec4(
+            min(max(color.x, 0.0), 1.0),
+            min(max(color.y, 0.0), 1.0),
+            min(max(color.z, 0.0), 1.0),
+            min(max(color.w, 0.0), 1.0))
 
-    n_samples: int = fb.color_attachment.n_samples_per_axis ** 2
-    px_index: int = (v_px * fb.color_attachment.width + u_px) * \
-        n_samples
-    for sample_index in samples_survived_indices:
-        fb.color_attachment.data[px_index + sample_index] = color
+        px_index: int = (v_px * fb.color_attachments[i].width + u_px) * n_samples
+        for sample_index in samples_survived_indices:
+            fb.color_attachments[i].data[px_index + sample_index] = color
 
     return True
 
@@ -182,18 +183,8 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     max_y_px: int = math.ceil(max(
         max(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
 
-    # add width and height to framebuffer object itself
-    max_attachment_height: int = 0
-    max_attachment_width: int = 0
-    if (fb.color_attachment != None):
-        max_attachment_height = fb.color_attachment.height
-        max_attachment_width = fb.color_attachment.width
-    else:
-        max_attachment_height = fb.depth_attachment.height
-        max_attachment_width = fb.depth_attachment.width
-
     # add clipping so you dont have to do this ):
-    if (min_x_px < 0 or max_x_px > max_attachment_width or min_y_px < 0 or max_y_px > max_attachment_height):
+    if (min_x_px < 0 or max_x_px > fb.width or min_y_px < 0 or max_y_px > fb.height):
         return False
 
     w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,

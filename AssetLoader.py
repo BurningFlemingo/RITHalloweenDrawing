@@ -23,34 +23,12 @@ class MeshAsset:
 
     positions: list[Vec3] = field(default_factory=list)
     normals: list[Vec3] = field(default_factory=list)
-    tex_uvs: list[Vec2] = field(default_factory=list) 
-
-
-class Material(NamedTuple):
-    ambient_color: Vec3
-    diffuse_color: Vec3
-    specular_color: Vec3
-
-    ambient_map: Buffer
-    diffuse_map: Buffer
-    specular_map: Buffer
-
-    specular_sharpness: float
-
-
-class Mesh(NamedTuple):
-    material: Material
-
-    positions: list[Vec3]
-    normals: list[Vec3]
-    tex_uvs: list[Vec2]
-
-    num_vertices: int
+    tex_uvs: list[Vec2] = field(default_factory=list)
 
 
 def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
     """
-        Automatically loads the buffer gamma corrected if is_srgb is True. 
+        Automatically loads the buffer gamma corrected if is_srgb is True.
     """
     with open(path, 'rb') as bmp:
         loaded_bmp: bytes = bmp.read()
@@ -69,7 +47,7 @@ def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
 
         if (compression_method != 0 or n_colors_in_pallet != 0 or bpp <= 16):
             print(f"{path} is formatted wrong: compression_method: {
-                  compression_method}, n_colors_in_pallet: {n_colors_in_pallet}, bpp: {bpp}")
+            compression_method}, n_colors_in_pallet: {n_colors_in_pallet}, bpp: {bpp}")
 
         row_size: int = ((bpp * width + 31) // 32) * 4  # padding included
         pixel_array_size: int = row_size * height
@@ -92,7 +70,7 @@ def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
         gamma_correction: float = 1.0
         if (is_srgb_nonlinear):
             gamma_correction = 2.2
-            
+
         for row in range(height):
             row_offset: int = row * width
             row_byte_offset: int = row * row_size
@@ -114,7 +92,7 @@ def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
                     a * channel_inv_max
                 )
                 pixels[row_offset + column] = normalized_color
-                    
+
             if row % 100 == 0:
                 print("Read row", row, "of", path)
 

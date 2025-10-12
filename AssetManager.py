@@ -1,6 +1,26 @@
 from AssetLoader import *
 
 
+class Material(NamedTuple):
+    ambient_color: Vec3
+    diffuse_color: Vec3
+    specular_color: Vec3
+
+    ambient_map: Buffer
+    diffuse_map: Buffer
+    specular_map: Buffer
+
+    specular_sharpness: float
+
+class Mesh(NamedTuple):
+    material: Material
+
+    positions: list[Vec3]
+    normals: list[Vec3]
+    tex_uvs: list[Vec2]
+
+    num_vertices: int
+
 class AssetManager:
     def __init__(self):
         self.m_loaded_texture_cache: dict[str, Buffer] = {}
