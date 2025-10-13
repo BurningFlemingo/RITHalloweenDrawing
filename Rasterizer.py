@@ -125,11 +125,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     n_samples: int = fb.n_samples_per_axis ** 2
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
-
-        px_index: int = (
-            v_px * fb.color_attachments[i].width + u_px) * n_samples
-        for sample_index in samples_survived_indices:
-            fb.color_attachments[i].data[px_index + sample_index] = color
+        fb.color_attachments[i].write_samples(u_px, v_px, color, samples_survived_indices)
 
     return True
 

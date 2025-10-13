@@ -83,7 +83,7 @@ class PhongFragmentShader:
             for x in range(-1, 2):
                 u: float = shadow_map_uv.x + x / shadow_map.width
                 v: float = shadow_map_uv.y + y / shadow_map.height
-                closest_depth: float = shadow_map.sampleUV(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf"))
+                closest_depth: float = shadow_map.sampleUV(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
                 if (current_depth <= 1.0):
                     shadow_scalar += 1 if (current_depth - bias) > closest_depth else 0
         shadow_scalar = 1 - (shadow_scalar / 9)
@@ -110,16 +110,16 @@ def calc_point_light_contribution(light: PointLight, fragment_pos: Vec3, normal:
     attenuation: float = light.intensity / (1 + light_distance ** 2)
 
     ambient: Vec3 = hadamard(
-        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv))
+        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv).x)
 
     diffuse_strength: float = max(dot(light_dir, normal), 0)
     diffuse: Vec3 = hadamard(
-        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv)) * diffuse_strength
+        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv).x) * diffuse_strength
 
     halfway: Vec3 = normalize(view_dir + light_dir)
     spec: float = max(dot(normal, halfway), 0) ** material.specular_sharpness
     specular: Vec3 = hadamard(
-        material.specular_color, material.specular_map.sampleUV(*tex_uv)) * spec
+        material.specular_color, material.specular_map.sampleUV(*tex_uv).x) * spec
 
     return hadamard(light.color, ambient + diffuse + specular) * attenuation
 
@@ -128,16 +128,16 @@ def calc_directional_light_contribution(light: DirectionalLight, fragment_pos: V
     light_dir = normalize(light.dir * -1)
 
     ambient: Vec3 = hadamard(
-        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv))
+        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv).x)
 
     diffuse_strength: float = max(dot(light_dir, normal), 0)
     diffuse: Vec3 = hadamard(
-        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv)) * diffuse_strength
+        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv).x) * diffuse_strength
 
     halfway: Vec3 = normalize(view_dir + light_dir)
     spec: float = max(dot(normal, halfway), 0) ** material.specular_sharpness
     specular: Vec3 = hadamard(
-        material.specular_color, material.specular_map.sampleUV(*tex_uv)) * spec
+        material.specular_color, material.specular_map.sampleUV(*tex_uv).x) * spec
 
     return hadamard(light.color, ambient + diffuse + specular) * light.intensity
 
@@ -149,7 +149,7 @@ def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: V
     light_dir = normalize(light_dir)
 
     ambient: Vec3 = hadamard(
-        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv))
+        material.ambient_color, material.diffuse_map.sampleUV(*tex_uv).x)
 
     cos_light_dir: float = dot(light_dir * -1, spot_dir)
     intensity: float = (cos_light_dir - light.cos_outer_cutoff) / \
@@ -160,11 +160,11 @@ def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: V
 
     diffuse_strength: float = max(dot(light_dir, normal), 0)
     diffuse = hadamard(
-        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv)) * diffuse_strength * spot_intensity * shadow_scalar
+        material.diffuse_color, material.diffuse_map.sampleUV(*tex_uv).x) * diffuse_strength * spot_intensity * shadow_scalar
 
     halfway: Vec3 = normalize(view_dir + light_dir)
     spec: float = max(dot(normal, halfway), 0) ** material.specular_sharpness
     specular = hadamard(
-        material.specular_color, material.specular_map.sampleUV(*tex_uv)) * spec * spot_intensity * shadow_scalar
+        material.specular_color, material.specular_map.sampleUV(*tex_uv).x) * spec * spot_intensity * shadow_scalar
 
     return hadamard(light.color, ambient + diffuse + specular) * attenuation

@@ -34,19 +34,31 @@ class Scene:
     def __init__(self, viewport: Viewport):
         n_samples_per_axis: float = 2
 
-        color_attachment = Buffer([Vec4(0.1, 0.1, 0.1, 1.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-                                  viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
-        resolve_attachment = Buffer([Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
-                                    viewport.width, viewport.height, 1, srgb_nonlinear=True)
+        color_attachment = Buffer(
+            data=[Vec4(0.1, 0.1, 0.1, 1.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
+            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
+        )
+        resolve_attachment = Buffer(
+            data=[Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
+            width=viewport.width, height=viewport.height, n_samples_per_axis=1,
+            format=Format.UNORM, color_space=ColorSpace.SRGB
+        )
 
-        depth_attachment = Buffer([float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-                                  viewport.width, viewport.height, n_samples_per_axis, srgb_nonlinear=False)
+        depth_attachment = Buffer(
+            data=[float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
+            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
+        )
 
         shadow_viewport: Viewport = Viewport(
             width=viewport.width, height=viewport.height)
 
-        shadow_map = Buffer([float("inf") for x in range(shadow_viewport.width * shadow_viewport.height)],
-                            shadow_viewport.width, shadow_viewport.height, 1, srgb_nonlinear=False)
+        shadow_map = Buffer(
+            data=[float("inf") for x in range(shadow_viewport.width * shadow_viewport.height)],
+            width=shadow_viewport.width, height=shadow_viewport.height, n_samples_per_axis=1,
+            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
+        )
 
         self.viewport: Viewport = viewport
         self.shadow_viewport: Viewport = shadow_viewport

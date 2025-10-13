@@ -4,10 +4,10 @@ from typing import Any
 
 
 class Vec4(NamedTuple):
-    x: Any
-    y: Any
-    z: Any
-    w: Any
+    x: Any = 0
+    y: Any = 0
+    z: Any = 0
+    w: Any = 1
 
     def __add__(self, other):
         return type(self)(*[a + b for a, b in zip(self, other)])
@@ -32,9 +32,9 @@ class Vec4(NamedTuple):
 
 
 class Vec3(NamedTuple):
-    x: Any
-    y: Any
-    z: Any
+    x: Any = 0
+    y: Any = 0
+    z: Any = 0
 
     def __add__(self, other):
         return type(self)(*[a + b for a, b in zip(self, other)])
@@ -59,8 +59,8 @@ class Vec3(NamedTuple):
 
 
 class Vec2(NamedTuple):
-    x: Any
-    y: Any
+    x: Any = 0
+    y: Any = 0
 
     def __add__(self, other):
         return type(self)(*[a + b for a, b in zip(self, other)])

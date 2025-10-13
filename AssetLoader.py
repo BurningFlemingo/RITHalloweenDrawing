@@ -26,7 +26,7 @@ class MeshAsset:
     tex_uvs: list[Vec2] = field(default_factory=list)
 
 
-def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
+def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace) -> Buffer:
     """
         Automatically loads the buffer gamma corrected if is_srgb is True.
     """
@@ -67,10 +67,6 @@ def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
         channel_max: float = ((2 ** (bytes_per_color_channel * 8)) - 1)
         channel_inv_max: float = 1.0 / channel_max
 
-        gamma_correction: float = 1.0
-        if (is_srgb_nonlinear):
-            gamma_correction = 2.2
-
         for row in range(height):
             row_offset: int = row * width
             row_byte_offset: int = row * row_size
@@ -86,17 +82,20 @@ def load_bmp(path: str, is_srgb_nonlinear: bool) -> Buffer:
                     a: int = channel_max
 
                 normalized_color: Vec4 = Vec4(
-                    (r * channel_inv_max) ** gamma_correction,
-                    (g * channel_inv_max) ** gamma_correction,
-                    (b * channel_inv_max) ** gamma_correction,
+                    (r * channel_inv_max),
+                    (g * channel_inv_max),
+                    (b * channel_inv_max),
                     a * channel_inv_max
                 )
+                normalized_color = transfer_color_space(normalized_color, src_color_space, dst_color_space)
                 pixels[row_offset + column] = normalized_color
 
             if row % 100 == 0:
                 print("Read row", row, "of", path)
 
-        return Buffer(pixels, width, height, 1, srgb_nonlinear=is_srgb_nonlinear)
+        return Buffer(
+            data=pixels, width=width, height=height, n_samples_per_axis=1,
+            format=Format.SFLOAT, color_space=dst_color_space)
 
 
 def parse_mtl(path: str) -> dict[str, MaterialAsset]:
