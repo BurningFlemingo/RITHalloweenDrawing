@@ -7,8 +7,8 @@ WINDOW_HEIGHT: int = 1080//2
 
 def main() -> None:
     scene = Scene(Viewport(WINDOW_WIDTH, WINDOW_HEIGHT))
-    camera = Camera(pos=[0, -0.0, 0.5], target=[0, 0, 1],
-                    fov=90, near_plane=0.1, far_plane=6)
+    camera = Camera(pos=[0, -0.0, 3], target=[0, 0, 4],
+                    fov=90, near_plane=1.0, far_plane=6)
     scene.set_camera(
         camera
     )
