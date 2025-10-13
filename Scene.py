@@ -95,7 +95,7 @@ class Scene:
             self.directional_lights.append(light)
         if (type(light) is SpotLight):
             self.spot_lights.append(light)
-            light_projection_mat: Mat4 = make_projection_matrix(
+            light_projection_mat: Mat4 = make_perspective_matrix(
                 90 / 2,
                 self.shadow_viewport.width / self.shadow_viewport.height,
                 0.01,
@@ -110,7 +110,7 @@ class Scene:
 
         self.view_matrix = make_lookat_matrix(
             cam.pos, cam.target, Vec3(0, 1, 0))
-        self.projection_matrix = make_projection_matrix(
+        self.projection_matrix = make_perspective_matrix(
             cam.fov / 2,
             ar,
             cam.near_plane,

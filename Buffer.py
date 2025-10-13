@@ -1,7 +1,13 @@
 from typing import NamedTuple
 from typing import Any
+from enum import Enum
 from VectorMath import *
 
+class WrappingMode(Enum):
+    NONE = 1, 
+    CLAMP = 2, 
+    CLAMP_TO_BORDER = 3, 
+    REPEAT = 4
 
 class Buffer(NamedTuple):
     data: list[Any]
@@ -16,14 +22,28 @@ class Buffer(NamedTuple):
         for sample in range(0, samples):
             self.data[samples * (y * self.width + x) + sample] = val
 
-    def sampleUV(self, u: float, v: float):
+    def sampleUV(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
         """
             u and v should be normalized between 0 and 1.
         """
         n_samples: int = self.n_samples_per_axis ** 2
 
-        x: int = int(u * (self.width - 1))
-        y: int = int(v * (self.height - 1))
+        max_x: int = self.width - 1
+        max_y: int = self.height - 1
+        
+        x: int = int(u * max_x)
+        y: int = int(v * max_y)
+        
+        if (mode == WrappingMode.CLAMP):
+            x = max(min(x, max_x), 0)
+            y = max(min(y, max_y), 0)
+        elif (mode == WrappingMode.CLAMP_TO_BORDER):
+            assert type(border_color) is not None, "no border color selected on border wrapping mode"
+            if (x > max_x or x < 0 or y > max_y or y < 0):
+                return border_color
+        elif (mode == WrappingMode.REPEAT):
+            x = x % max_x
+            y = y % max_y
 
         index: int = (y * self.width + x) * n_samples
 

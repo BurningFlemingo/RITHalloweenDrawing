@@ -125,11 +125,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     n_samples: int = fb.n_samples_per_axis ** 2
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
-        color = Vec4(
-            min(max(color.x, 0.0), 1.0),
-            min(max(color.y, 0.0), 1.0),
-            min(max(color.z, 0.0), 1.0),
-            min(max(color.w, 0.0), 1.0))
 
         px_index: int = (
             v_px * fb.color_attachments[i].width + u_px) * n_samples

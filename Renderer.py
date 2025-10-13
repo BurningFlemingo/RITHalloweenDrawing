@@ -51,8 +51,8 @@ def draw(pipeline: GraphicsPipeline, vertex_buffer: dict[str, list], vertex_shad
 
 def clip_triangle(v1: Vertex, v2: Vertex, v3: Vertex) -> list[Triangle]:
     planes: list[Vec4] = [
-        Vec4(0, 0, 1, 1),  # near
-        Vec4(0, 0, -1, 1),  # far
+        Vec4(0, 0, 1, 0),  # near 
+        Vec4(0, 0, -1, 1),  # far 
         Vec4(1, 0, 0, 1),  # left
         Vec4(-1, 0, 0, 1),  # right
         Vec4(0, -1, 0, 1),  # top
@@ -61,23 +61,7 @@ def clip_triangle(v1: Vertex, v2: Vertex, v3: Vertex) -> list[Triangle]:
 
     triangles: list[Triangle] = [Triangle(v1, v2, v3)]
 
-    centroid: Vec4 = (v1.pos + v2.pos + v3.pos) / 3
-
-    v1_radius: float = (v1.pos - centroid).magnitude()
-    v2_radius: float = (v2.pos - centroid).magnitude()
-    v3_radius: float = (v3.pos - centroid).magnitude()
-
-    bounding_sphere_radius: float = max(max(v1_radius, v2_radius), v3_radius)
-
     for plane in planes:
-        sphere_distance: float = dot(plane, centroid)
-
-        # reduce clip quality, but improve perf
-        if (sphere_distance < -bounding_sphere_radius):
-            return []
-        # if (sphere_distance > bounding_sphere_radius):
-        #     continue
-
         new_triangles: list[Triangle] = []
         for triangle in triangles:
             new_triangles += clip_triangle_against_plane(

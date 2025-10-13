@@ -100,10 +100,17 @@ def make_normal_matrix(model_matrix: Mat4) -> Mat4:
     )
 
 
-def make_projection_matrix(fov: float, ar: float, near_plane: float, far_plane: float) -> Mat4:
+def make_perspective_matrix(fov: float, ar: float, near_plane: float, far_plane: float) -> Mat4:
     return Mat4(
         Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
         Vec4(0, 1/math.tan(fov/2), 0, 0),
         Vec4(0, 0, far_plane/(far_plane - near_plane), -
              (far_plane * near_plane)/(far_plane - near_plane)),
         Vec4(0, 0, 1, 0))
+
+def make_orthographic_matrix(left: float, right: float, bottom: float, top: float, near: float, far: float) -> Mat4:
+    return Mat4(
+        Vec4(2/(right - left), 0, 0, -(right + left)/(right - left)),
+        Vec4(0, 2/(top - bottom), 0, -(top + bottom)/(top - bottom)),
+        Vec4(0, 0, -2 / (far - near), -(far + near)/(far - near)),
+        Vec4(0, 0, 0, 1))

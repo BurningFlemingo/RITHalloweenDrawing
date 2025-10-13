@@ -34,12 +34,11 @@ class PhongVertexShader:
 
         pos, normal, tex_uv = in_attributes
 
-        view_pos: Vec4 = view_matrix * \
-            model_matrix * Vec4(*pos, 1.0)
+        world_pos: Vec4 = model_matrix * Vec4(*pos, 1.0)
+        view_pos: Vec4 = view_matrix * world_pos
 
         normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normal, 1.0))[:3])
-        frag_light_space_pos: Vec4 = light_space_matrix * \
-            model_matrix * Vec4(*pos, 1.0)
+        frag_light_space_pos: Vec4 = light_space_matrix * world_pos
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
@@ -49,12 +48,6 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    class Attributes(NamedTuple):
-        pos: Vec3
-        normal: Vec3
-        tex_uv: Vec2
-        frag_light_space_pos: Vec4
-
     def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Buffer):
         self.material = material
         self.point_lights = point_lights
@@ -62,7 +55,7 @@ class PhongFragmentShader:
         self.spot_lights = spot_lights
         self.shadow_map = shadow_map
 
-    def __call__(self, attributes: Attributes) -> list[Vec4]:
+    def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
         material: Material = self.material
         shadow_map: Buffer = self.shadow_map
 
@@ -72,21 +65,28 @@ class PhongFragmentShader:
 
         frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
         frag_light_space_pos /= frag_light_space_pos.w
+        current_depth: float = frag_light_space_pos.z
+
+        normal = normalize(normal)
+        view_dir: Vec3 = normalize(pos * -1)
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
 
-        bias: float = 0.0001
-        current_depth: float = frag_light_space_pos.z
+        max_bias: float = 0.002
+        min_bias: float = 0.00001
+        spot_light_dir: Vec3 = self.spot_lights[0].pos - pos
+        bias: float = max(max_bias * (1 - dot(normal, spot_light_dir)), min_bias)
 
-        frag_in_shadow: bool = False
-        if (shadow_map_uv.x <= 1.0 and shadow_map_uv.x >= 0 and shadow_map_uv.y <= 1.0 and shadow_map_uv.y >= 0):
-            closest_depth: float = shadow_map.sampleUV(*shadow_map_uv)
-
-            frag_in_shadow = (current_depth - bias) > closest_depth
-
-        normal = normalize(normal)
-        view_dir: Vec3 = normalize(pos * -1)
+        shadow_scalar: float = 0.0
+        for y in range(-1, 2):
+            for x in range(-1, 2):
+                u: float = shadow_map_uv.x + x / shadow_map.width
+                v: float = shadow_map_uv.y + y / shadow_map.height
+                closest_depth: float = shadow_map.sampleUV(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf"))
+                if (current_depth <= 1.0):
+                    shadow_scalar += 1 if (current_depth - bias) > closest_depth else 0
+        shadow_scalar = 1 - (shadow_scalar / 9)
 
         final_color: Vec3 = Vec3(0.0, 0.0, 0.0)
         for light in self.point_lights:
@@ -97,7 +97,7 @@ class PhongFragmentShader:
                 light, pos, normal, tex_uv, material, view_dir)
         for light in self.spot_lights:
             final_color += calc_spot_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir, frag_in_shadow)
+                light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
 
         return [Vec4(*final_color, 1.0)]
 
@@ -142,13 +142,11 @@ def calc_directional_light_contribution(light: DirectionalLight, fragment_pos: V
     return hadamard(light.color, ambient + diffuse + specular) * light.intensity
 
 
-def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, frag_in_shadow: bool) -> Vec3:
+def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, shadow_scalar: float) -> Vec3:
     spot_dir = normalize(light.dir)
     light_dir = light.pos - fragment_pos
     light_distance = light_dir.magnitude()
     light_dir = normalize(light_dir)
-
-    shadow_scalar = 0 if frag_in_shadow else 1
 
     ambient: Vec3 = hadamard(
         material.ambient_color, material.diffuse_map.sampleUV(*tex_uv))
