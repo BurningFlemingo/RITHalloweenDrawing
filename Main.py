@@ -7,7 +7,7 @@ WINDOW_HEIGHT: int = 1080//2
 
 def main() -> None:
     scene = Scene(Viewport(WINDOW_WIDTH, WINDOW_HEIGHT))
-    camera = Camera(pos=[0, -0.0, 3], target=[0, 0, 4],
+    camera = Camera(pos=[0, -0.0, 0.5], target=[0, 0, 5],
                     fov=90, near_plane=1.0, far_plane=6)
     scene.set_camera(
         camera
@@ -19,11 +19,12 @@ def main() -> None:
 
     # scene.add_light(PointLight(pos=[0, 5, 0], color=[1.0, 1.0, 1.0], intensity=0.8))
 
-    cube_transform = Transform(pos=camera.pos + Vec3(0.5, 0.5, 1.0), rot=[0, 0, 0], scale=[0.025, 0.025, 0.025])
+    cube_transform = Transform(
+        pos=camera.pos + Vec3(0.5, 0.5, 1.0), rot=[0, 0, 0], scale=[0.025, 0.025, 0.025])
     scene.add_light(SpotLight(
         pos=cube_transform.pos, dir=[0, 0.0, 1.0],
         inner_cutoff_angle=10.0, outer_cutoff_angle=60.0,
-        color=[1.0, 0.3, 1], intensity=3.0)
+        color=[1.0, 0.3, 1], intensity=5.0)
     )
     scene.add_model("assets\\cube\\Cube.obj", cube_transform)
 

@@ -155,13 +155,13 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     # pre-dividing so inner loop isnt calculating this a ton for no reason
     p1 = Vertex(
         subpx_transform(p1.pos, n_subpx_per_axis),
-        attrib_pre_divide(p1))
+        p1.fragment_attributes)
     p2 = Vertex(
         subpx_transform(p2.pos, n_subpx_per_axis),
-        attrib_pre_divide(p2))
+        p2.fragment_attributes)
     p3 = Vertex(
         subpx_transform(p3.pos, n_subpx_per_axis),
-        attrib_pre_divide(p3))
+        p3.fragment_attributes)
 
     edge1: Vec4 = p2.pos - p1.pos
     edge2: Vec4 = p3.pos - p2.pos
@@ -183,10 +183,6 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
         min(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
     max_y_px: int = math.ceil(max(
         max(p1.pos.y, p2.pos.y), p3.pos.y) / n_subpx_per_axis)
-
-    # add clipping so you dont have to do this ):
-    if (min_x_px < 0 or max_x_px > fb.width or min_y_px < 0 or max_y_px > fb.height):
-        return False
 
     w1_px_step: Vec2 = Vec2(int(-edge2.y) * n_subpx_per_axis,
                             int(edge2.x) * n_subpx_per_axis)

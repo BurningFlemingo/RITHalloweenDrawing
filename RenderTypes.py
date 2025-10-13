@@ -7,7 +7,7 @@ import math
 
 class Vertex(NamedTuple):
     pos: Vec4
-    fragment_attributes: NamedTuple | None
+    fragment_attributes: NamedTuple
 
 
 class Transform:
