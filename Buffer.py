@@ -84,6 +84,7 @@ def transfer_format(src_val: NamedTuple, src_format: Format, dst_format: Format)
         return type(src_val)(*elements)
     return src_val
 
+
 def transfer_color_space(src_color: NamedTuple, src_space: ColorSpace, dst_space: ColorSpace) -> NamedTuple:
     gamma: float = 2.2
     if (dst_space == ColorSpace.SRGB and src_space == ColorSpace.LINEAR):
@@ -93,7 +94,7 @@ def transfer_color_space(src_color: NamedTuple, src_space: ColorSpace, dst_space
         channels += src_color[3:]
         return type(src_color)(*channels)
 
-    elif (dst_space == ColorSpace.LINEAR and src_color == ColorSpace.SRGB):
+    elif (dst_space == ColorSpace.LINEAR and src_space == ColorSpace.SRGB):
         channels: list[float] = []
         for channel in src_color[:3]:
             channels.append(channel ** gamma)
@@ -129,7 +130,8 @@ def resolve_buffer(src: Buffer, target: Buffer):
                     src.data[src_px_index + sample_index]
 
             avg_color: Vec4 = accumulated_value * (1/n_samples)
-            avg_color = transfer_color_space(avg_color, src.color_space, target.color_space)
+            avg_color = transfer_color_space(
+                avg_color, src.color_space, target.color_space)
             final_color = transfer_format(avg_color, src.format, target.format)
 
             target.data[target_px_index] = final_color

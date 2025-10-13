@@ -21,6 +21,12 @@ class Transform:
         self.scale = Vec3(*scale)
 
 
+class Triangle(NamedTuple):
+    v1: Vertex
+    v2: Vertex
+    v3: Vertex
+
+
 class PointLight:
     def __init__(self, pos: Vec3, color: Vec3, intensity: float = 1.0):
         self.pos = Vec3(*pos)

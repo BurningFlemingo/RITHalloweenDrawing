@@ -47,7 +47,7 @@ def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace
 
         if (compression_method != 0 or n_colors_in_pallet != 0 or bpp <= 16):
             print(f"{path} is formatted wrong: compression_method: {
-            compression_method}, n_colors_in_pallet: {n_colors_in_pallet}, bpp: {bpp}")
+                compression_method}, n_colors_in_pallet: {n_colors_in_pallet}, bpp: {bpp}")
 
         row_size: int = ((bpp * width + 31) // 32) * 4  # padding included
         pixel_array_size: int = row_size * height
@@ -87,7 +87,8 @@ def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace
                     (b * channel_inv_max),
                     a * channel_inv_max
                 )
-                normalized_color = transfer_color_space(normalized_color, src_color_space, dst_color_space)
+                normalized_color = transfer_color_space(
+                    normalized_color, src_color_space, dst_color_space)
                 pixels[row_offset + column] = normalized_color
 
             if row % 100 == 0:
@@ -140,7 +141,8 @@ def parse_mtl(path: str) -> dict[str, MaterialAsset]:
                 material.specular_map_path = directory + items[1]
         materials[material.name] = material
 
-    [print(materials[key].name, ":", materials[key].diffuse_map_path) for key in materials]
+    [print(materials[key].name, ":", materials[key].diffuse_map_path)
+     for key in materials]
     return materials
 
 

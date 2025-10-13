@@ -125,19 +125,14 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     n_samples: int = fb.n_samples_per_axis ** 2
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
-        fb.color_attachments[i].write_samples(u_px, v_px, color, samples_survived_indices)
+        fb.color_attachments[i].write_samples(
+            u_px, v_px, color, samples_survived_indices)
 
     return True
 
 
 def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
-
-
-def attrib_pre_divide(p: Vertex) -> NamedTuple:
-    if (p.fragment_attributes is None):
-        return
-    return type(p.fragment_attributes)(*[attrib / p.pos.w for attrib in p.fragment_attributes])
 
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
