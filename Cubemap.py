@@ -1,19 +1,19 @@
 from typing import NamedTuple
-from enum import Enum
+from enum import IntEnum
 from VectorMath import *
 from Buffer import *
 from AssetLoader import *
 
 
 class Cubemap(NamedTuple):
-    class Face(Enum):
+    class Face(IntEnum):
         RIGHT = 0,
         LEFT = 1,
         TOP = 2,
         BOTTOM = 3,
         FRONT = 4,
         BACK = 5,
-    
+
     faces: list[Buffer]
 
     def sample(self, dir: Vec3) -> Vec4:
@@ -23,7 +23,7 @@ class Cubemap(NamedTuple):
         abs_y: float = abs(dir.y)
         abs_z: float = abs(dir.z)
 
-        uv: Vec2 | None = None 
+        uv: Vec2 | None = None
         face: Face | None = None
         major_axis: float = 1
 
@@ -59,12 +59,12 @@ class Cubemap(NamedTuple):
 
 def load_cubemap(dir_path: str) -> Cubemap:
     face_strings: list[str] = [
-        "right", "left", "top", "bottom", "front", "back"        
+        "right", "left", "top", "bottom", "front", "back"
     ]
     faces: list[Buffer] = []
     for face_string in face_strings:
         path: str = dir_path + face_string + ".bmp"
         face: Buffer = load_bmp(path, ColorSpace.SRGB, ColorSpace.LINEAR)
         faces.append(face)
-    
+
     return Cubemap(faces=faces)

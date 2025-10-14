@@ -13,7 +13,7 @@ class Vec4(NamedTuple):
         if type(other) is not type(self):
             other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
-    
+
     def __sub__(self, other):
         if type(other) is not type(self):
             other = type(self).filled(other)
@@ -40,8 +40,8 @@ class Vec4(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2 + self.w**2)
 
-    def filled(val: Vec4):
-        return Vec4(val, val, val, 1.0) 
+    def filled(val: Any):
+        return Vec4(val, val, val, 1.0)
 
 
 class Vec3(NamedTuple):
@@ -53,7 +53,6 @@ class Vec3(NamedTuple):
         if type(other) is not type(self):
             other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
-    
 
     def __sub__(self, other):
         if type(other) is not type(self):
@@ -93,7 +92,6 @@ class Vec2(NamedTuple):
         if type(other) is not type(self):
             other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
-    
 
     def __sub__(self, other):
         if type(other) is not type(self):
@@ -121,7 +119,7 @@ class Vec2(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2)
 
-    def filled(val: Vec4):
+    def filled(val: Any):
         return Vec2(val, val)
 
 

@@ -39,52 +39,60 @@ class Scene:
     def __init__(self, viewport: Viewport):
         shadow_viewport: Viewport = Viewport(
             width=viewport.width, height=viewport.height)
-        
+
         n_samples_per_axis: float = 2
 
         hdr_color_attachment = Buffer(
-            data=[Vec4(0.1, 0.1, 0.1, 1.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            data=[Vec4(0.1, 0.1, 0.1, 1.0) for x in range(
+                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
             width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
-        
+
         pingpong_color_attachment_1 = Buffer(
-            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
+                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
             width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
         pingpong_color_attachment_2 = Buffer(
-            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
+                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
             width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
-        
+
         hdr_resolve_attachment_1 = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
+            data=[Vec3(0.0, 0.0, 0.0)
+                  for x in range(viewport.width * viewport.height)],
             width=viewport.width, height=viewport.height, n_samples_per_axis=1,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
         hdr_resolve_attachment_2 = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
+            data=[Vec3(0.0, 0.0, 0.0)
+                  for x in range(viewport.width * viewport.height)],
             width=viewport.width, height=viewport.height, n_samples_per_axis=1,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
         ldr_color_attachment = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0) for x in range(viewport.width * viewport.height)],
+            data=[Vec3(0.0, 0.0, 0.0)
+                  for x in range(viewport.width * viewport.height)],
             width=viewport.width, height=viewport.height, n_samples_per_axis=1,
             format=Format.UNORM, color_space=ColorSpace.SRGB
         )
 
         self.skybox = load_cubemap("assets\\skybox\\")
-        
+
         scene_depth_attachment = Buffer(
-            data=[float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            data=[float("inf") for x in range(viewport.width *
+                                              viewport.height * (n_samples_per_axis ** 2))],
             width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
 
         shadow_map = Buffer(
-            data=[float("inf") for x in range(shadow_viewport.width * shadow_viewport.height)],
+            data=[float("inf") for x in range(
+                shadow_viewport.width * shadow_viewport.height)],
             width=shadow_viewport.width, height=shadow_viewport.height, n_samples_per_axis=1,
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
@@ -93,9 +101,10 @@ class Scene:
         self.shadow_viewport: Viewport = shadow_viewport
 
         self.asset_manager: AssetManager = AssetManager()
-        
+
         self.light_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment, pingpong_color_attachment_1], [hdr_resolve_attachment_1, hdr_resolve_attachment_2], scene_depth_attachment,
+            [hdr_color_attachment, pingpong_color_attachment_1], [
+                hdr_resolve_attachment_1, hdr_resolve_attachment_2], scene_depth_attachment,
             hdr_color_attachment.width, hdr_color_attachment.height, hdr_color_attachment.n_samples_per_axis)
 
         self.shadow_framebuffer: Framebuffer = Framebuffer(
@@ -108,18 +117,18 @@ class Scene:
             ldr_color_attachment.width, ldr_color_attachment.height, ldr_color_attachment.n_samples_per_axis)
 
         self.skybox_framebuffer: Framebuffer = Framebuffer(
-            [hdr_resolve_attachment_1], None, [scene_depth_attachment],
+            [hdr_resolve_attachment_1], None, scene_depth_attachment,
             hdr_resolve_attachment_1.width, hdr_resolve_attachment_1.height, hdr_resolve_attachment_1.n_samples_per_axis)
-        
+
         self.pingpong_framebuffers: list[Framebuffer] = [
             Framebuffer(
                 [pingpong_color_attachment_1], None, None,
                 pingpong_color_attachment_1.width, pingpong_color_attachment_1.height, pingpong_color_attachment_1.n_samples_per_axis
-            ), 
+            ),
             Framebuffer(
                 [pingpong_color_attachment_2], None, None,
                 pingpong_color_attachment_2.width, pingpong_color_attachment_2.height, pingpong_color_attachment_2.n_samples_per_axis
-            ), 
+            ),
         ]
 
         self.shadow_pipeline: GraphicsPipeline = GraphicsPipeline(
@@ -140,16 +149,15 @@ class Scene:
             framebuffer=self.skybox_framebuffer
         )
 
-
         self.pingpong_pipelines: list[GraphicsPipeline] = [
             GraphicsPipeline(
                 viewport=viewport,
                 framebuffer=self.pingpong_framebuffers[0]
-            ), 
+            ),
             GraphicsPipeline(
                 viewport=viewport,
                 framebuffer=self.pingpong_framebuffers[1]
-            ) 
+            )
         ]
 
         self.view_matrix: Mat4 = None
@@ -250,7 +258,7 @@ class Scene:
                     vertex_count=mesh.num_vertices,
                     vertex_offset=0
                 )
-                
+
     def tonemap_pass(self):
         self.post_process_pass(
             self.tonemap_pipeline,
@@ -262,83 +270,80 @@ class Scene:
     def blur_pass(self):
         self.post_process_pass(
             self.pingpong_pipelines[1],
-            GaussianFragmentShader(self.light_framebuffer.resolve_attachments[1], True)
+            GaussianFragmentShader(
+                self.light_framebuffer.resolve_attachments[1], True)
         )
         self.post_process_pass(
             self.pingpong_pipelines[0],
-            GaussianFragmentShader(self.pingpong_framebuffers[1].color_attachments[0], False)
+            GaussianFragmentShader(
+                self.pingpong_framebuffers[1].color_attachments[0], False)
         )
 
     def skybox_pass(self, skybox: Cubemap):
 
         vertex_positions: list[Vec3] = [
             Vec3(-1.0,  1.0, -1.0),
-            Vec3(-1.0, -1.0, -1.0),
-            Vec3( 1.0, -1.0, -1.0),
-            Vec3( 1.0, -1.0, -1.0),
-            Vec3( 1.0,  1.0, -1.0),
-            Vec3(-1.0,  1.0, -1.0),
-
-            Vec3(-1.0, -1.0,  1.0),
+            Vec3(1.0,  1.0, -1.0),
+            Vec3(1.0, -1.0, -1.0),
+            Vec3(1.0, -1.0, -1.0),
             Vec3(-1.0, -1.0, -1.0),
             Vec3(-1.0,  1.0, -1.0),
-            Vec3(-1.0,  1.0, -1.0),
-            Vec3(-1.0,  1.0,  1.0),
-            Vec3(-1.0, -1.0,  1.0),
-
-            Vec3( 1.0, -1.0, -1.0),
-            Vec3( 1.0, -1.0,  1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3( 1.0,  1.0, -1.0),
-            Vec3( 1.0, -1.0, -1.0),
-
             Vec3(-1.0, -1.0,  1.0),
             Vec3(-1.0,  1.0,  1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3( 1.0, -1.0,  1.0),
-            Vec3(-1.0, -1.0,  1.0),
-
             Vec3(-1.0,  1.0, -1.0),
-            Vec3( 1.0,  1.0, -1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3( 1.0,  1.0,  1.0),
-            Vec3(-1.0,  1.0,  1.0),
             Vec3(-1.0,  1.0, -1.0),
-
             Vec3(-1.0, -1.0, -1.0),
             Vec3(-1.0, -1.0,  1.0),
-            Vec3( 1.0, -1.0, -1.0),
-            Vec3( 1.0, -1.0, -1.0),
+            Vec3(1.0, -1.0, -1.0),
+            Vec3(1.0,  1.0, -1.0),
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(1.0, -1.0,  1.0),
+            Vec3(1.0, -1.0, -1.0),
             Vec3(-1.0, -1.0,  1.0),
-            Vec3( 1.0, -1.0,  1.0)
-        ]
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(-1.0,  1.0,  1.0),
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3(1.0, -1.0,  1.0),
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3(-1.0,  1.0,  1.0),
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(1.0,  1.0,  1.0),
+            Vec3(1.0,  1.0, -1.0),
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3(-1.0, -1.0, -1.0),
+            Vec3(1.0, -1.0, -1.0),
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3(1.0, -1.0, -1.0),
+            Vec3(1.0, -1.0,  1.0),
+            Vec3(-1.0, -1.0,  1.0)]
 
         vertex_buffer = {"pos": vertex_positions}
 
         draw(
             pipeline=self.skybox_pipeline,
             vertex_buffer=vertex_buffer,
-            vertex_shader=SkyboxVertexShader(self.view_matrix, self.projection_matrix),
+            vertex_shader=SkyboxVertexShader(
+                self.view_matrix, self.projection_matrix),
             fragment_shader=SkyboxFragmentShader(skybox),
             vertex_count=len(vertex_positions),
             vertex_offset=0
-        )       
+        )
 
     def post_process_pass(self, pipeline: GraphicsPipeline, fragment_shader: FragmentShader):
         vertex_positions: list[Vec3] = [
-                Vec3(1.0, 1.0, 1.0), 
-                Vec3(-1.0, 1.0, 1.0), 
-                Vec3(-1.0, -1.0, 1.0), 
-                
-                Vec3(-1.0, -1.0, 1.0), 
-                Vec3(1.0, -1.0, 1.0), 
-                Vec3(1.0, 1.0, 1.0), 
+            Vec3(1.0, 1.0, 1.0),
+            Vec3(-1.0, 1.0, 1.0),
+            Vec3(-1.0, -1.0, 1.0),
+
+            Vec3(-1.0, -1.0, 1.0),
+            Vec3(1.0, -1.0, 1.0),
+            Vec3(1.0, 1.0, 1.0),
         ]
-        
+
         vertex_buffer = {"pos": vertex_positions}
-        
+
         draw(
             pipeline=pipeline,
             vertex_buffer=vertex_buffer,
@@ -348,18 +353,17 @@ class Scene:
             vertex_offset=0
         )
 
-
     def render(self):
-        # self.shadow_pass()
-        # self.light_pass()
-        # resolve_buffer(
-        #     src=self.light_framebuffer.color_attachments[0],
-        #     target=self.light_framebuffer.resolve_attachments[0]
-        # )
-        # resolve_buffer(
-        #     src=self.light_framebuffer.color_attachments[1],
-        #     target=self.light_framebuffer.resolve_attachments[1]
-        # )
+        self.shadow_pass()
+        self.light_pass()
+        resolve_buffer(
+            src=self.light_framebuffer.color_attachments[0],
+            target=self.light_framebuffer.resolve_attachments[0]
+        )
+        resolve_buffer(
+            src=self.light_framebuffer.color_attachments[1],
+            target=self.light_framebuffer.resolve_attachments[1]
+        )
         # self.blur_pass() # expensive
         self.skybox_pass(self.skybox)
         self.tonemap_pass()
