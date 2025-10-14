@@ -103,18 +103,31 @@ def interpolate_attributes(p1_attrib: NamedTuple, p2_attrib: NamedTuple, p3_attr
 def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
-    samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
-        ctx, u_px, v_px, w1, w2)
+    n_samples: int = fb.n_samples_per_axis ** 2
+    if (fb.depth_attachment is None):
+        w1 += (w1_px_step.x + w1_px_step.y) / 2
+        w2 += (w2_px_step.x + w2_px_step.y) / 2
+        
+        w1 = w1 / det
+        w2 = w2 / det
+        
+        samples_survived_indices: list[int] = [i for i in range(0, n_samples)]
+    else:
+        samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
+            ctx, u_px, v_px, w1, w2)
+        
+        n_surviving_samples: int = len(samples_survived_indices)
+        if (n_surviving_samples == 0):
+            return False
+
+        w1 = accumulated_w1 / (n_surviving_samples * det)
+        w2 = accumulated_w2 / (n_surviving_samples * det)
+        
+    w3 = 1.0 - w1 - w2
+    
     if (fb.color_attachments is None):
         return False
-
-    n_surviving_samples: int = len(samples_survived_indices)
-    if (n_surviving_samples == 0):
-        return False
-
-    w1 = accumulated_w1 / (n_surviving_samples * det)
-    w2 = accumulated_w2 / (n_surviving_samples * det)
-    w3 = 1.0 - w1 - w2
+    
     px_depth: float = 1.0 / (w1/p1.pos.w +
                              w2/p2.pos.w + w3/p3.pos.w)
 
@@ -122,7 +135,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, w1, w2, w3, px_depth)
 
     colors: list[Vec4] = fragment_shader(interpolated_attributes)
-    n_samples: int = fb.n_samples_per_axis ** 2
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
         fb.color_attachments[i].write_samples(

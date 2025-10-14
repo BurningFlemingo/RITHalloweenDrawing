@@ -10,25 +10,38 @@ class Vec4(NamedTuple):
     w: Any = 1
 
     def __add__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
-
+    
     def __sub__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a - b for a, b in zip(self, other)])
 
-    def __mul__(self, factor):
-        return type(self)(*[a * factor for a in self])
+    def __mul__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a * other for a in self])
+        return type(self)(*[a * b for a, b in zip(self, other)])
 
-    def __truediv__(self, factor):
-        return type(self)(*[a / factor for a in self])
+    def __truediv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a / other for a in self])
+        return type(self)(*[a / b for a, b in zip(self, other)])
 
-    def __floordiv__(self, factor):
-        return type(self)(*[a // factor for a in self])
+    def __floordiv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a // other for a in self])
+        return type(self)(*[a // b for a, b in zip(self, other)])
 
     def __pow__(self, exp):
         return type(self)(*[a ** exp for a in self])
 
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2 + self.w**2)
+
+    def filled(val: Vec4):
+        return Vec4(val, val, val, 1.0) 
 
 
 class Vec3(NamedTuple):
@@ -37,19 +50,30 @@ class Vec3(NamedTuple):
     z: Any = 0
 
     def __add__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
+    
 
     def __sub__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a - b for a, b in zip(self, other)])
 
-    def __mul__(self, factor):
-        return type(self)(*[(a * factor) for a in self])
+    def __mul__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a * other for a in self])
+        return type(self)(*[a * b for a, b in zip(self, other)])
 
-    def __truediv__(self, factor):
-        return type(self)(*[a / factor for a in self])
+    def __truediv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a / other for a in self])
+        return type(self)(*[a / b for a, b in zip(self, other)])
 
-    def __floordiv__(self, factor):
-        return type(self)(*[a // factor for a in self])
+    def __floordiv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a // other for a in self])
+        return type(self)(*[a // b for a, b in zip(self, other)])
 
     def __pow__(self, exp):
         return type(self)(*[a ** exp for a in self])
@@ -57,31 +81,48 @@ class Vec3(NamedTuple):
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2 + self.z**2)
 
+    def filled(val: Any):
+        return Vec3(val, val, val)
+
 
 class Vec2(NamedTuple):
     x: Any = 0
     y: Any = 0
 
     def __add__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a + b for a, b in zip(self, other)])
+    
 
     def __sub__(self, other):
+        if type(other) is not type(self):
+            other = type(self).filled(other)
         return type(self)(*[a - b for a, b in zip(self, other)])
 
-    def __mul__(self, factor):
-        return type(self)(*[(a * factor) for a in self])
+    def __mul__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a * other for a in self])
+        return type(self)(*[a * b for a, b in zip(self, other)])
 
-    def __truediv__(self, factor):
-        return type(self)(*[a / factor for a in self])
+    def __truediv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a / other for a in self])
+        return type(self)(*[a / b for a, b in zip(self, other)])
 
-    def __floordiv__(self, factor):
-        return type(self)(*[a // factor for a in self])
+    def __floordiv__(self, other):
+        if type(other) is not type(self):
+            return type(self)(*[a // other for a in self])
+        return type(self)(*[a // b for a, b in zip(self, other)])
 
     def __pow__(self, exp):
         return type(self)(*[a ** exp for a in self])
 
     def magnitude(self):
         return math.sqrt(self.x**2 + self.y**2)
+
+    def filled(val: Vec4):
+        return Vec2(val, val)
 
 
 class Rot3(NamedTuple):
@@ -120,10 +161,6 @@ def cross(a: Vec3, b: Vec3):
         -(a.x * b.z - a.z * b.x),
         a.x * b.y - a.y * b.x
     )
-
-
-def hadamard(v1, v2):
-    return type(v1)(*[a * b for a, b in zip(v1, v2)])
 
 
 def reflect(incoming, normal):

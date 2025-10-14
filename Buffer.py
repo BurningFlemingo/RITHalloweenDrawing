@@ -20,7 +20,6 @@ class ColorSpace(Enum):
     LINEAR = 1
     SRGB = 2
 
-
 class Buffer(NamedTuple):
     data: list[NamedTuple]
     width: int
@@ -31,8 +30,8 @@ class Buffer(NamedTuple):
     color_space: ColorSpace
 
     def write_samples(self, x: int, y: int, val: NamedTuple, sample_indices: list[int]):
-        val = transfer_color_space(val, ColorSpace.LINEAR, self.color_space)
         val = transfer_format(val, Format.SFLOAT, self.format)
+        val = transfer_color_space(val, ColorSpace.LINEAR, self.color_space)
 
         samples: int = self.n_samples_per_axis ** 2
         for sample in sample_indices:
@@ -42,7 +41,9 @@ class Buffer(NamedTuple):
         """
             u and v should be normalized between 0 and 1.
         """
-        if (type(border_color) != tuple and type(border_color) != list and type(border_color) != None):
+        try:
+            iter(border_color)
+        except:
             border_color = [border_color]
 
         n_samples: int = self.n_samples_per_axis ** 2
@@ -68,12 +69,26 @@ class Buffer(NamedTuple):
         index: int = (y * self.width + x) * n_samples
 
         val: NamedTuple = self.data[index]
-        if (type(val) != tuple and type(val) != list):
+        
+        try:
+            iter(val)
+        except:
             val = [val]
-        val = transfer_color_space(val, self.color_space, ColorSpace.LINEAR)
+            
         val = transfer_format(val, self.format, Format.SFLOAT)
+        val = transfer_color_space(val, self.color_space, ColorSpace.LINEAR)
 
         return Vec4(*val)
+
+class Framebuffer(NamedTuple):
+    color_attachments: list[Buffer]
+    resolve_attachments: list[Buffer]
+    depth_attachment: Buffer
+
+    width: int
+    height: int
+
+    n_samples_per_axis: int
 
 
 def transfer_format(src_val: NamedTuple, src_format: Format, dst_format: Format) -> NamedTuple:
@@ -103,17 +118,6 @@ def transfer_color_space(src_color: NamedTuple, src_space: ColorSpace, dst_space
     return src_color
 
 
-class Framebuffer(NamedTuple):
-    color_attachments: list[Buffer]
-    resolve_attachments: list[Buffer]
-    depth_attachment: Buffer
-
-    width: int
-    height: int
-
-    n_samples_per_axis: int
-
-
 def resolve_buffer(src: Buffer, target: Buffer):
     """
         src buffer must be the same width and height as the target buffer. 
@@ -129,12 +133,15 @@ def resolve_buffer(src: Buffer, target: Buffer):
                 accumulated_value = accumulated_value + \
                     src.data[src_px_index + sample_index]
 
-            avg_color: Vec4 = accumulated_value * (1/n_samples)
-            avg_color = transfer_color_space(
-                avg_color, src.color_space, target.color_space)
+            avg_color: Vec4 = accumulated_value / n_samples
+            
             final_color = transfer_format(avg_color, src.format, target.format)
+            final_color = transfer_color_space(
+                final_color, src.color_space, target.color_space)
 
             target.data[target_px_index] = final_color
+
+# def transition_buffer(buffer: Buffer, dst_format: Format, dst_color_space: ColorSpace) -> Buffer:
 
 
 def clear_buffer(buffer: Buffer, clear_value: Any) -> None:

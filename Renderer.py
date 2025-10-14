@@ -6,6 +6,7 @@ from MatrixMath import *
 from Buffer import *
 from Presentation import Viewport
 from Clipping import *
+from RenderTypes import *
 
 
 VertexShader = Callable[[Any], Vertex]
