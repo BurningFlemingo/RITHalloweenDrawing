@@ -7,6 +7,7 @@ from RenderTypes import *
 from AssetManager import *
 from MatrixMath import *
 from Renderer import *
+from Cubemap import *
 from dataclasses import dataclass
 
 
@@ -15,6 +16,7 @@ from shaders.ShadowPass import *
 from shaders.ToneMapping import *
 from shaders.Quad import *
 from shaders.GaussianBlur import *
+from shaders.Skybox import *
 
 
 @dataclass
@@ -72,6 +74,8 @@ class Scene:
             width=viewport.width, height=viewport.height, n_samples_per_axis=1,
             format=Format.UNORM, color_space=ColorSpace.SRGB
         )
+
+        self.skybox = load_cubemap("assets\\skybox\\")
         
         scene_depth_attachment = Buffer(
             data=[float("inf") for x in range(viewport.width * viewport.height * (n_samples_per_axis ** 2))],
@@ -102,6 +106,10 @@ class Scene:
         self.tonemap_framebuffer: Framebuffer = Framebuffer(
             [ldr_color_attachment], None, None,
             ldr_color_attachment.width, ldr_color_attachment.height, ldr_color_attachment.n_samples_per_axis)
+
+        self.skybox_framebuffer: Framebuffer = Framebuffer(
+            [hdr_resolve_attachment_1], None, [scene_depth_attachment],
+            hdr_resolve_attachment_1.width, hdr_resolve_attachment_1.height, hdr_resolve_attachment_1.n_samples_per_axis)
         
         self.pingpong_framebuffers: list[Framebuffer] = [
             Framebuffer(
@@ -126,6 +134,10 @@ class Scene:
         self.tonemap_pipeline: GraphicsPipeline = GraphicsPipeline(
             viewport=viewport,
             framebuffer=self.tonemap_framebuffer
+        )
+        self.skybox_pipeline: GraphicsPipeline = GraphicsPipeline(
+            viewport=viewport,
+            framebuffer=self.skybox_framebuffer
         )
 
 
@@ -165,7 +177,7 @@ class Scene:
         if (type(light) is SpotLight):
             self.spot_lights.append(light)
             light_projection_mat: Mat4 = make_perspective_matrix(
-                90 / 2,
+                90,
                 self.shadow_viewport.width / self.shadow_viewport.height,
                 0.01,
                 10)
@@ -180,7 +192,7 @@ class Scene:
         self.view_matrix = make_lookat_matrix(
             cam.pos, cam.target, Vec3(0, 1, 0))
         self.projection_matrix = make_perspective_matrix(
-            cam.fov / 2,
+            cam.fov,
             ar,
             cam.near_plane,
             cam.far_plane
@@ -243,7 +255,7 @@ class Scene:
         self.post_process_pass(
             self.tonemap_pipeline,
             TonemapFragmentShader(
-                self.light_framebuffer.resolve_attachments[0]
+                self.skybox_framebuffer.color_attachments[0]
             )
         )
 
@@ -256,6 +268,63 @@ class Scene:
             self.pingpong_pipelines[0],
             GaussianFragmentShader(self.pingpong_framebuffers[1].color_attachments[0], False)
         )
+
+    def skybox_pass(self, skybox: Cubemap):
+
+        vertex_positions: list[Vec3] = [
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3(-1.0, -1.0, -1.0),
+            Vec3( 1.0, -1.0, -1.0),
+            Vec3( 1.0, -1.0, -1.0),
+            Vec3( 1.0,  1.0, -1.0),
+            Vec3(-1.0,  1.0, -1.0),
+
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3(-1.0, -1.0, -1.0),
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3(-1.0,  1.0,  1.0),
+            Vec3(-1.0, -1.0,  1.0),
+
+            Vec3( 1.0, -1.0, -1.0),
+            Vec3( 1.0, -1.0,  1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3( 1.0,  1.0, -1.0),
+            Vec3( 1.0, -1.0, -1.0),
+
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3(-1.0,  1.0,  1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3( 1.0, -1.0,  1.0),
+            Vec3(-1.0, -1.0,  1.0),
+
+            Vec3(-1.0,  1.0, -1.0),
+            Vec3( 1.0,  1.0, -1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3( 1.0,  1.0,  1.0),
+            Vec3(-1.0,  1.0,  1.0),
+            Vec3(-1.0,  1.0, -1.0),
+
+            Vec3(-1.0, -1.0, -1.0),
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3( 1.0, -1.0, -1.0),
+            Vec3( 1.0, -1.0, -1.0),
+            Vec3(-1.0, -1.0,  1.0),
+            Vec3( 1.0, -1.0,  1.0)
+        ]
+
+        vertex_buffer = {"pos": vertex_positions}
+
+        draw(
+            pipeline=self.skybox_pipeline,
+            vertex_buffer=vertex_buffer,
+            vertex_shader=SkyboxVertexShader(self.view_matrix, self.projection_matrix),
+            fragment_shader=SkyboxFragmentShader(skybox),
+            vertex_count=len(vertex_positions),
+            vertex_offset=0
+        )       
 
     def post_process_pass(self, pipeline: GraphicsPipeline, fragment_shader: FragmentShader):
         vertex_positions: list[Vec3] = [
@@ -281,17 +350,18 @@ class Scene:
 
 
     def render(self):
-        self.shadow_pass()
-        self.light_pass()
-        resolve_buffer(
-            src=self.light_framebuffer.color_attachments[0],
-            target=self.light_framebuffer.resolve_attachments[0]
-        )
-        resolve_buffer(
-            src=self.light_framebuffer.color_attachments[1],
-            target=self.light_framebuffer.resolve_attachments[1]
-        )
+        # self.shadow_pass()
+        # self.light_pass()
+        # resolve_buffer(
+        #     src=self.light_framebuffer.color_attachments[0],
+        #     target=self.light_framebuffer.resolve_attachments[0]
+        # )
+        # resolve_buffer(
+        #     src=self.light_framebuffer.color_attachments[1],
+        #     target=self.light_framebuffer.resolve_attachments[1]
+        # )
         # self.blur_pass() # expensive
+        self.skybox_pass(self.skybox)
         self.tonemap_pass()
 
     def present(self):

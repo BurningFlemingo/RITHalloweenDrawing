@@ -84,7 +84,7 @@ class PhongFragmentShader:
             for x in range(-1, 2):
                 u: float = shadow_map_uv.x + x / shadow_map.width
                 v: float = shadow_map_uv.y + y / shadow_map.height
-                closest_depth: float = shadow_map.sampleUV(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
+                closest_depth: float = shadow_map.sample(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
                 if (current_depth <= 1.0):
                     shadow_scalar += 1 if (current_depth - bias) > closest_depth else 0
         shadow_scalar = 1 - (shadow_scalar / 9)

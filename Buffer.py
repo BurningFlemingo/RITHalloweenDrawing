@@ -37,7 +37,7 @@ class Buffer(NamedTuple):
         for sample in sample_indices:
             self.data[samples * (y * self.width + x) + sample] = val
 
-    def sampleUV(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
+    def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
         """
             u and v should be normalized between 0 and 1.
         """

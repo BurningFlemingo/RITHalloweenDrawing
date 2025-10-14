@@ -35,9 +35,9 @@ def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: V
     return calc_phong_lighting(material, tex_uv, light.color, light_dir, view_dir, normal, attenuation, intensity)
 
 def calc_phong_lighting(material: Material, tex_uv: Vec2, light_color: Vec3, light_dir: Vec3, view_dir: Vec3, normal: Vec3, attenuation: float, intensity: float):
-    ambient: Vec3 = material.ambient_color * Vec3(*material.diffuse_map.sampleUV(*tex_uv)[:3])
-    diffuse: Vec3 = material.diffuse_color * Vec3(*material.diffuse_map.sampleUV(*tex_uv)[:3])
-    specular: Vec3 = material.specular_color * Vec3(*material.specular_map.sampleUV(*tex_uv)[:3])
+    ambient: Vec3 = material.ambient_color * Vec3(*material.diffuse_map.sample(*tex_uv)[:3])
+    diffuse: Vec3 = material.diffuse_color * Vec3(*material.diffuse_map.sample(*tex_uv)[:3])
+    specular: Vec3 = material.specular_color * Vec3(*material.specular_map.sample(*tex_uv)[:3])
     
     diffuse_strength: float = max(dot(light_dir, normal), 0)
     diffuse *= diffuse_strength * intensity

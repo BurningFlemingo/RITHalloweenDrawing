@@ -101,9 +101,12 @@ def make_normal_matrix(model_matrix: Mat4) -> Mat4:
 
 
 def make_perspective_matrix(fov: float, ar: float, near_plane: float, far_plane: float) -> Mat4:
+    """
+        fov in degrees
+    """
     return Mat4(
-        Vec4(1/(ar * math.tan(fov/2)), 0, 0, 0),
-        Vec4(0, 1/math.tan(fov/2), 0, 0),
+        Vec4(1/(ar * math.tan(math.radians(fov/2))), 0, 0, 0),
+        Vec4(0, 1/math.tan(math.radians(fov/2)), 0, 0),
         Vec4(0, 0, far_plane/(far_plane - near_plane), -
              (far_plane * near_plane)/(far_plane - near_plane)),
         Vec4(0, 0, 1, 0))

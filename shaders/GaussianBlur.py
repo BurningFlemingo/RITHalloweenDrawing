@@ -23,15 +23,15 @@ class GaussianFragmentShader:
             for i in range(1, 5):
                 u0: float = uv.x + (i * texel_step.x)
                 u1: float = uv.x - (i * texel_step.x)
-                fragment_color += image.sampleUV(u0, v, WrappingMode.CLAMP) * weights[0]
-                fragment_color += image.sampleUV(u1, v, WrappingMode.CLAMP) * weights[0]
+                fragment_color += image.sample(u0, v, WrappingMode.CLAMP) * weights[0]
+                fragment_color += image.sample(u1, v, WrappingMode.CLAMP) * weights[0]
         else:
             u: float = uv.x
             for i in range(1, 5):
                 v0: float = uv.y + (i * texel_step.y)
                 v1: float = uv.y - (i * texel_step.y)
-                fragment_color += image.sampleUV(u, v0, WrappingMode.CLAMP) * weights[0]
-                fragment_color += image.sampleUV(u, v1, WrappingMode.CLAMP) * weights[0]
+                fragment_color += image.sample(u, v0, WrappingMode.CLAMP) * weights[0]
+                fragment_color += image.sample(u, v1, WrappingMode.CLAMP) * weights[0]
         
 
         return [fragment_color]
