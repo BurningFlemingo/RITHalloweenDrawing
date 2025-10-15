@@ -1,4 +1,5 @@
 from typing import NamedTuple
+from dataclasses import dataclass
 
 from VectorMath import *
 from Presentation import *
@@ -8,7 +9,7 @@ from AssetManager import *
 from MatrixMath import *
 from Renderer import *
 from Cubemap import *
-from dataclasses import dataclass
+from RenderGraph import *
 
 
 from shaders.PhongLighting import *
@@ -115,11 +116,13 @@ class Scene:
             n_samples_per_axis=shadow_map.n_samples_per_axis)
 
         self.light_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment, pingpong_color_attachment_1], None, scene_depth_attachment,
+            [hdr_color_attachment,
+                pingpong_color_attachment_1], None, scene_depth_attachment,
             hdr_color_attachment.width, hdr_color_attachment.height, hdr_color_attachment.n_samples_per_axis)
 
         self.skybox_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment], [hdr_resolve_attachment_1], scene_depth_attachment,
+            [hdr_color_attachment], [
+                hdr_resolve_attachment_1], scene_depth_attachment,
             hdr_color_attachment_2.width, hdr_color_attachment_2.height, hdr_color_attachment_2.n_samples_per_axis)
 
         self.tonemap_framebuffer: Framebuffer = Framebuffer(
@@ -253,7 +256,7 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
-                    shadow_map=self.shadow_framebuffer.depth_attachment, 
+                    shadow_map=self.shadow_framebuffer.depth_attachment,
                     skybox=self.skybox
                 )
 
