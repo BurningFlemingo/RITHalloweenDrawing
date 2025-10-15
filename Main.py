@@ -1,8 +1,8 @@
 from Scene import *
 from RenderTypes import *
 
-WINDOW_WIDTH: int = 1920
-WINDOW_HEIGHT: int = 1080
+WINDOW_WIDTH: int = 1920 // 2
+WINDOW_HEIGHT: int = 1080 // 2
 
 
 def main() -> None:

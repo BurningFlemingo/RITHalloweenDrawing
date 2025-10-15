@@ -74,7 +74,8 @@ class PhongFragmentShader:
         view_dir: Vec3 = normalize(pos * -1)
 
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
-        skybox_frag_color: Vec3 = Vec3(*self.skybox.sample(reflected_view_dir)[:3]) * 10
+        skybox_frag_color: Vec3 = Vec3(
+            *self.skybox.sample(reflected_view_dir)[:3]) * 10
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
@@ -82,16 +83,19 @@ class PhongFragmentShader:
         max_bias: float = 0.002
         min_bias: float = 0.00001
         spot_light_dir: Vec3 = self.spot_lights[0].pos - pos
-        bias: float = max(max_bias * (1 - dot(normal, spot_light_dir)), min_bias)
+        bias: float = max(
+            max_bias * (1 - dot(normal, spot_light_dir)), min_bias)
 
         shadow_scalar: float = 0.0
         for y in range(-1, 2):
             for x in range(-1, 2):
                 u: float = shadow_map_uv.x + x / shadow_map.width
                 v: float = shadow_map_uv.y + y / shadow_map.height
-                closest_depth: float = shadow_map.sample(u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
+                closest_depth: float = shadow_map.sample(
+                    u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
                 if (current_depth <= 1.0):
-                    shadow_scalar += 1 if (current_depth - bias) > closest_depth else 0
+                    shadow_scalar += 1 if (current_depth -
+                                           bias) > closest_depth else 0
         shadow_scalar = 1 - (shadow_scalar / 9)
 
         frag_color: Vec3 = Vec3(0.0, 0.0, 0.0)
@@ -106,11 +110,10 @@ class PhongFragmentShader:
                 light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
         # rgb luma coefficients from the Rec. 709 Standard
         frag_color *= skybox_frag_color
-        
+
         brightness: float = dot(frag_color, Vec3(0.2126, 0.7152, 0.0722))
         bloom_color: Vec3 = Vec3(0, 0, 0)
         if (brightness > 1.0):
             bloom_color = frag_color
-            
 
         return [Vec4(*frag_color, 1.0), Vec4(*bloom_color, 1.0)]
