@@ -70,7 +70,6 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (lis
                 depth_buffer_index: int = px_index + sample_index
 
                 if (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
-
                     fb.depth_attachment.data[depth_buffer_index] = interpolated_depth
                     samples_survived_indices.append(sample_index)
 

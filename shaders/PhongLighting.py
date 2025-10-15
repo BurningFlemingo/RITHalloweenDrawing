@@ -4,6 +4,7 @@ from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
 from AssetManager import *
+from Cubemap import *
 from shaders.Lighting import *
 
 
@@ -49,12 +50,13 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Buffer):
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Buffer, skybox: Cubemap):
         self.material = material
         self.point_lights = point_lights
         self.directional_lights = directional_lights
         self.spot_lights = spot_lights
         self.shadow_map = shadow_map
+        self.skybox = skybox
 
     def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
         material: Material = self.material
@@ -70,6 +72,9 @@ class PhongFragmentShader:
 
         normal = normalize(normal)
         view_dir: Vec3 = normalize(pos * -1)
+
+        reflected_view_dir: Vec3 = reflect(view_dir, normal)
+        skybox_frag_color: Vec3 = Vec3(*self.skybox.sample(reflected_view_dir)[:3]) * 10
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
@@ -100,9 +105,12 @@ class PhongFragmentShader:
             frag_color += calc_spot_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
         # rgb luma coefficients from the Rec. 709 Standard
+        frag_color *= skybox_frag_color
+        
         brightness: float = dot(frag_color, Vec3(0.2126, 0.7152, 0.0722))
         bloom_color: Vec3 = Vec3(0, 0, 0)
         if (brightness > 1.0):
             bloom_color = frag_color
+            
 
         return [Vec4(*frag_color, 1.0), Vec4(*bloom_color, 1.0)]

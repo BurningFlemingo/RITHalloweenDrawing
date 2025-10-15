@@ -1,14 +1,14 @@
 from Scene import *
 from RenderTypes import *
 
-WINDOW_WIDTH: int = 1920 // 2
-WINDOW_HEIGHT: int = 1080 // 2
+WINDOW_WIDTH: int = 1920
+WINDOW_HEIGHT: int = 1080
 
 
 def main() -> None:
     scene = Scene(Viewport(WINDOW_WIDTH, WINDOW_HEIGHT))
     camera = Camera(pos=[0, -0.0, 1.0], target=[0, 0, 5],
-                    fov=90, near_plane=0.01, far_plane=6)
+                    fov=70, near_plane=0.01, far_plane=6)
     scene.set_camera(
         camera
     )

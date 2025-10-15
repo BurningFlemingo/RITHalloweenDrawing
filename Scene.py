@@ -49,6 +49,13 @@ class Scene:
             format=Format.SFLOAT, color_space=ColorSpace.LINEAR
         )
 
+        hdr_color_attachment_2 = Buffer(
+            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
+                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
+            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
+            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
+        )
+
         pingpong_color_attachment_1 = Buffer(
             data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
                 viewport.width * viewport.height * (n_samples_per_axis ** 2))],
@@ -102,23 +109,22 @@ class Scene:
 
         self.asset_manager: AssetManager = AssetManager()
 
-        self.light_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment, pingpong_color_attachment_1], [
-                hdr_resolve_attachment_1, hdr_resolve_attachment_2], scene_depth_attachment,
-            hdr_color_attachment.width, hdr_color_attachment.height, hdr_color_attachment.n_samples_per_axis)
-
         self.shadow_framebuffer: Framebuffer = Framebuffer(
             color_attachments=None, resolve_attachments=None, depth_attachment=shadow_map,
             width=shadow_map.width, height=shadow_map.height,
             n_samples_per_axis=shadow_map.n_samples_per_axis)
 
+        self.light_framebuffer: Framebuffer = Framebuffer(
+            [hdr_color_attachment, pingpong_color_attachment_1], None, scene_depth_attachment,
+            hdr_color_attachment.width, hdr_color_attachment.height, hdr_color_attachment.n_samples_per_axis)
+
+        self.skybox_framebuffer: Framebuffer = Framebuffer(
+            [hdr_color_attachment], [hdr_resolve_attachment_1], scene_depth_attachment,
+            hdr_color_attachment_2.width, hdr_color_attachment_2.height, hdr_color_attachment_2.n_samples_per_axis)
+
         self.tonemap_framebuffer: Framebuffer = Framebuffer(
             [ldr_color_attachment], None, None,
             ldr_color_attachment.width, ldr_color_attachment.height, ldr_color_attachment.n_samples_per_axis)
-
-        self.skybox_framebuffer: Framebuffer = Framebuffer(
-            [hdr_resolve_attachment_1], None, scene_depth_attachment,
-            hdr_resolve_attachment_1.width, hdr_resolve_attachment_1.height, hdr_resolve_attachment_1.n_samples_per_axis)
 
         self.pingpong_framebuffers: list[Framebuffer] = [
             Framebuffer(
@@ -247,7 +253,8 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
-                    shadow_map=self.shadow_framebuffer.depth_attachment
+                    shadow_map=self.shadow_framebuffer.depth_attachment, 
+                    skybox=self.skybox
                 )
 
                 draw(
@@ -263,7 +270,7 @@ class Scene:
         self.post_process_pass(
             self.tonemap_pipeline,
             TonemapFragmentShader(
-                self.skybox_framebuffer.color_attachments[0]
+                self.skybox_framebuffer.resolve_attachments[0]
             )
         )
 
@@ -356,16 +363,12 @@ class Scene:
     def render(self):
         self.shadow_pass()
         self.light_pass()
+        # self.skybox_pass(self.skybox)
         resolve_buffer(
-            src=self.light_framebuffer.color_attachments[0],
-            target=self.light_framebuffer.resolve_attachments[0]
-        )
-        resolve_buffer(
-            src=self.light_framebuffer.color_attachments[1],
-            target=self.light_framebuffer.resolve_attachments[1]
+            src=self.skybox_framebuffer.color_attachments[0],
+            target=self.skybox_framebuffer.resolve_attachments[0]
         )
         # self.blur_pass() # expensive
-        self.skybox_pass(self.skybox)
         self.tonemap_pass()
 
     def present(self):
