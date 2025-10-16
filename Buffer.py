@@ -82,7 +82,6 @@ class Buffer(NamedTuple):
 
 class Framebuffer(NamedTuple):
     color_attachments: list[Buffer]
-    resolve_attachments: list[Buffer]
     depth_attachment: Buffer
 
     width: int
@@ -118,10 +117,34 @@ def transfer_color_space(src_color: NamedTuple, src_space: ColorSpace, dst_space
     return src_color
 
 
+def transfer_buffer(src: Buffer, target_format: Format, target_color_space: ColorSpace) -> Buffer:
+    n_samples: int = src.n_samples_per_axis ** 2
+    for y_px in range(0, src.height):
+        for x_px in range(0, src.width):
+            px_index: int = (y_px * src.width + x_px) * n_samples
+            for sample_index in range(0, n_samples):
+                index: int = px_index + sample_index
+                value: Any = src.data[index]
+            
+                final_value = transfer_format(value, src.format, target_format)
+                final_value = transfer_color_space(
+                    final_value, src.color_space, target_color_space)
+
+                src.data[index] = final_value
+
+    return Buffer(
+                data=src.data, width=src.width, height=src.height,
+                n_samples_per_axis=src.n_samples_per_axis,
+                format=target_format, color_space=target_color_space
+            )
+
 def resolve_buffer(src: Buffer, target: Buffer):
     """
         src buffer must be the same width and height as the target buffer. 
     """
+    assert(src.width == target.width)
+    assert(src.height == target.height)
+    
     n_samples: int = src.n_samples_per_axis ** 2
     for y_px in range(0, src.height):
         for x_px in range(0, src.width):
