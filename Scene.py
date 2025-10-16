@@ -38,34 +38,36 @@ class Camera:
 
 class Scene:
     def __init__(self, viewport: Viewport):
+        shadow_viewport: Viewport = Viewport(
+            width=viewport.width, height=viewport.height)
+        
         self.render_graph: RenderGraph = RenderGraph()
 
-        msaa_color_attachment_info = AttachmentInfo(
-            clear_value=Vec4(0.0, 0.0, 0.0, 0.0), msaa=2)
-        msaa_depth_attachment_info = AttachmentInfo(
-            clear_value=float("inf"), msaa=2)
-        backbuffer_attachment_info = AttachmentInfo(clear_value=Vec4(
-            0.5, 0.5, 0.5, 1.0), format=Format.UNORM, color_space=ColorSpace.SRGB)
-        shadow_buffer_attachment_info = AttachmentInfo(clear_value=float(
-            "inf"), size_mode=SizeMode.ABSOLUTE, width=200, height=200)
-
+        msaa_color_attachment_info = AttachmentInfo(msaa=2)
+        msaa_depth_attachment_info = AttachmentInfo(msaa=2)
+        backbuffer_attachment_info = AttachmentInfo(
+            width=viewport.width, height=viewport.height, size_mode=SizeMode.ABSOLUTE, 
+            format=Format.RGBA_UNORM, color_space=ColorSpace.SRGB, is_transient=False
+        )
+        shadow_buffer_attachment_info = AttachmentInfo(size_mode=SizeMode.ABSOLUTE, format=Format.RGBA_UNORM, width=200, height=200)
+        
         self.backbuffer: Buffer = make_buffer(backbuffer_attachment_info)
-        self.render_graph.set_backbuffer("backbuffer", self.backbuffer)
+        self.render_graph.import_attachment("backbuffer", self.backbuffer)
+        
+        self.render_graph.declare_attachment("shadow_map", shadow_buffer_attachment_info)
+        self.render_graph.declare_attachment("scene_depth_buffer", msaa_depth_attachment_info)
 
-        shadow_pass: RenderPass = self.render_graph.add_pass(RenderPass())
-        shadow_pass.set_depth_output(
-            "shadow_buffer", shadow_buffer_attachment_info)
+        shadow_pass: RenderPass = self.render_graph.add_pass(RenderPass(shadow_viewport, self.shadow_pass))
+        shadow_pass.set_depth_output("shadow_map")
 
-        light_pass: RenderPass = self.render_graph.add_pass(RenderPass())
-        light_pass.add_input_attachment("shadow_buffer")
-        light_pass.set_depth_output(
-            "scene_depth_buffer", msaa_depth_attachment_info)
-        light_pass.add_color_output("backbuffer", backbuffer_attachment_info)
+        light_pass: RenderPass = self.render_graph.add_pass(RenderPass(viewport, self.light_pass))
+        light_pass.add_input_attachment("shadow_map")
+        light_pass.set_depth_output("scene_depth_buffer")
+        light_pass.add_color_output("backbuffer")
 
         self.render_graph.compile()
 
-        shadow_viewport: Viewport = Viewport(
-            width=viewport.width, height=viewport.height)
+
 
         n_samples_per_axis: float = 2
 
@@ -241,7 +243,7 @@ class Scene:
             cam.far_plane
         )
 
-    def shadow_pass(self):
+    def shadow_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
 
@@ -252,8 +254,7 @@ class Scene:
 
             for mesh in model:
                 vertex_buffer = {"pos": mesh.positions}
-                draw(
-                    pipeline=self.shadow_pipeline,
+                ctx.draw(
                     vertex_buffer=vertex_buffer,
                     vertex_shader=vertex_shader,
                     fragment_shader=None,
@@ -261,8 +262,10 @@ class Scene:
                     vertex_offset=0
                 )
 
-    def light_pass(self):
+    def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
+            shadow_buffer: Buffer = ctx.input_attachments[0]
+            
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
 
@@ -282,12 +285,11 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
-                    shadow_map=self.shadow_framebuffer.depth_attachment,
+                    shadow_map=shadow_map,
                     skybox=self.skybox
                 )
 
-                draw(
-                    pipeline=self.light_pipeline,
+                ctx.draw(
                     vertex_buffer=vertex_buffer,
                     vertex_shader=phong_vertex_shader,
                     fragment_shader=phong_fragment_shader,
@@ -295,13 +297,19 @@ class Scene:
                     vertex_offset=0
                 )
 
-    def tonemap_pass(self):
+    def tonemap_pass(self, ctx: RenderCtx):
+        hdr_attachment: Buffer = ctx.input_attachments[0]
+        
         self.post_process_pass(
-            self.tonemap_pipeline,
-            TonemapFragmentShader(
-                self.skybox_framebuffer.resolve_attachments[0]
-            )
+            ctx,
+            TonemapFragmentShader(hdr_attachment)
         )
+
+    def resolve_pass(self, ctx: RenderCtx):
+        src_buffer: Buffer = ctx.input_attachments[0]
+        target_buffer: Buffer = ctx.framebuffer.color_attachments[0]
+        resolve_buffer(src_buffer, target_buffer)
+        
 
     def blur_pass(self):
         self.post_process_pass(
@@ -367,7 +375,7 @@ class Scene:
             vertex_offset=0
         )
 
-    def post_process_pass(self, pipeline: GraphicsPipeline, fragment_shader: FragmentShader):
+    def post_process_pass(self, ctx: RenderCtx, fragment_shader: FragmentShader):
         vertex_positions: list[Vec3] = [
             Vec3(1.0, 1.0, 1.0),
             Vec3(-1.0, 1.0, 1.0),
@@ -380,8 +388,7 @@ class Scene:
 
         vertex_buffer = {"pos": vertex_positions}
 
-        draw(
-            pipeline=pipeline,
+        ctx.draw(
             vertex_buffer=vertex_buffer,
             vertex_shader=QuadVertexShader(),
             fragment_shader=fragment_shader,

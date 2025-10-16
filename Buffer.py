@@ -45,9 +45,7 @@ class Buffer(NamedTuple):
         """
             u and v should be normalized between 0 and 1.
         """
-        try:
-            iter(border_color)
-        except:
+        if (this.format == D_UNORM or this.format == D_SFLOAT):
             border_color = [border_color]
 
         n_samples: int = self.n_samples_per_axis ** 2
