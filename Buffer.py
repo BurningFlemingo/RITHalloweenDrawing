@@ -34,7 +34,7 @@ class Buffer(NamedTuple):
     color_space: ColorSpace = ColorSpace.NONE
 
     def write_samples(self, x: int, y: int, val: NamedTuple, sample_indices: list[int]):
-        val = transfer_format(val, Format.SFLOAT, self.format)
+        val = transfer_format(val, Format.RGBA_SFLOAT, self.format)
         val = transfer_color_space(val, ColorSpace.LINEAR, self.color_space)
 
         samples: int = self.n_samples_per_axis ** 2
@@ -45,7 +45,7 @@ class Buffer(NamedTuple):
         """
             u and v should be normalized between 0 and 1.
         """
-        if (this.format == D_UNORM or this.format == D_SFLOAT):
+        if (self.format == Format.D_UNORM or self.format == Format.D_SFLOAT):
             border_color = [border_color]
 
         n_samples: int = self.n_samples_per_axis ** 2
@@ -72,12 +72,10 @@ class Buffer(NamedTuple):
 
         val: NamedTuple = self.data[index]
 
-        try:
-            iter(val)
-        except:
+        if (self.format == Format.D_UNORM or self.format == Format.D_SFLOAT):
             val = [val]
 
-        val = transfer_format(val, self.format, Format.SFLOAT)
+        val = transfer_format(val, self.format, Format.RGBA_SFLOAT)
         val = transfer_color_space(val, self.color_space, ColorSpace.LINEAR)
 
         return Vec4(*val)
@@ -94,7 +92,7 @@ class Framebuffer(NamedTuple):
 
 
 def transfer_format(src_val: NamedTuple, src_format: Format, dst_format: Format) -> NamedTuple:
-    if (src_format == Format.SFLOAT and dst_format == Format.UNORM):
+    if (src_format == Format.RGBA_SFLOAT and dst_format == Format.RGBA_UNORM):
         elements: list[float] = []
         for element in src_val:
             elements.append(max(min(element, 1.0), 0.0))

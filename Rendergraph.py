@@ -43,32 +43,27 @@ class AttachmentInfo:
 class RenderPass:
     def __init__(self, viewport: Viewport, callback: Callable[[RenderCtx], None]):
         self.viewport = viewport
-        
+
         self.inputs: list[str] = []
 
         self.color_outputs: list[str] = []
-        self.depth_output: str | None = None
+        self.depth_attachment: str | None = None
 
         self.clear_values: dict[str, Vec4 |
                                 float | None] = {}  # [str, ClearValue]
 
         self.render_callback: Callable[[RenderCtx], None] | None = callback
 
-    def add_input_attachment(self, name: str) -> RenderPass:
+    def add_input_attachment(self, name: str):
         self.inputs.append(name)
-        return self
 
-    def add_color_output(self, name: str, clear_color: Vec4 | None = None) -> RenderPass:
+    def add_color_output(self, name: str, clear_color: Vec4 | None = None):
         self.color_outputs.append(name)
         self.clear_values[name] = clear_color
 
-        return self
-
-    def set_depth_output(self, name: str, clear_value: float | None = None) -> RenderPass:
-        self.depth_output = name
+    def set_depth_attachment(self, name: str, clear_value: float | None = None):
+        self.depth_attachment = name
         self.clear_values[name] = clear_value
-
-        return self
 
 
 class RenderGraph:
@@ -82,8 +77,8 @@ class RenderGraph:
 
     def import_attachment(self, name: str, buffer: Buffer):
         attachment_info = AttachmentInfo(
-            size_mode=SizeMode.ABSOLUTE, 
-            width=buffer.width, 
+            size_mode=SizeMode.ABSOLUTE,
+            width=buffer.width,
             height=buffer.height,
             msaa=buffer.n_samples_per_axis,
             format=buffer.format,
@@ -97,14 +92,23 @@ class RenderGraph:
         self.render_passes.append(render_pass)
         return self.render_passes[-1]
 
-
     def get_attachment(self, name: str) -> Buffer:
         return self.attachments[name]
 
     def compile(self):
         for render_pass in self.render_passes:
+            if (render_pass.depth_attachment != None and render_pass.depth_attachment not in self.attachments):
+                info: AttachmentInfo = self.attachment_infos[render_pass.depth_attachment]
+                if (info.size_mode == SizeMode.VIEWPORT):
+                    info.width = render_pass.viewport.width
+                    info.height = render_pass.viewport.height
+
+                self.attachments[render_pass.depth_attachment] = make_buffer(
+                    info)
+
             for name in render_pass.color_outputs:
-                assert name in self.attachment_infos, f"{name} attachment was never added to graph"
+                assert name in self.attachment_infos, f"{
+                    name} attachment was never added to graph"
 
                 info: AttachmentInfo = self.attachment_infos[name]
                 if (name not in self.attachments):
@@ -118,65 +122,66 @@ class RenderGraph:
         for render_pass in self.render_passes:
             input_attachments: list[Buffer] = []
             color_output_attachments: list[Buffer] = []
-            depth_output_attachment: Buffer | None = None
-            
-            msaa: int = 0
-            
-            assert render_pass.depth_output == None or render_pass.depth_output in self.attachments, f"{render_pass.depth_output} attachment not found in graph"
-            if (render_pass.depth_output in self.attachments):
-                depth_output_attachment: Buffer = self.attachments[render_pass.depth_output]
-                
-                msaa = max(msaa, depth_output_attachment.n_samples_per_axis)
+            depth_attachment: Buffer | None = None
 
+            msaa: int = 0
+
+            assert render_pass.depth_attachment == None or render_pass.depth_attachment in self.attachments, f"{
+                render_pass.depth_attachment} attachment not found in graph"
+            if (render_pass.depth_attachment in self.attachments):
+                depth_attachment: Buffer = self.attachments[render_pass.depth_attachment]
+
+                msaa = max(msaa, depth_attachment.n_samples_per_axis)
 
             for name in render_pass.color_outputs:
-                assert name in self.attachments, f"{name} attachment not found in graph"
-                
+                assert name in self.attachments, f"{
+                    name} attachment not found in graph"
+
                 buffer: Buffer = self.attachments[name]
-                if (info.clear_values[name] != None):
-                    clear_buffer(buffer, info.clear_value)
-                    
+                clear_value: Vec4 | float | None = render_pass.clear_values[name]
+                if (clear_value != None):
+                    clear_buffer(buffer, clear_value)
+
                 color_output_attachments.append(buffer)
-                
                 msaa = max(msaa, buffer.n_samples_per_axis)
 
             for name in render_pass.inputs:
-                assert name in self.attachments, f"{name} attachment not found in graph"
-                
+                assert name in self.attachments, f"{
+                    name} attachment not found in graph"
+
                 buffer: Buffer = self.attachments[name]
                 input_attachments.append(buffer)
-                
+
             viewport: Viewport = render_pass.viewport
             framebuffer: Framebuffer = Framebuffer(
-                color_attachments=color_output_attachments, 
-                depth_attachment=depth_output_attachment, 
-                n_samples_per_axis=msaa, 
-                width=viewport.width, 
+                color_attachments=color_output_attachments,
+                depth_attachment=depth_attachment,
+                n_samples_per_axis=msaa,
+                width=viewport.width,
                 height=viewport.height
             )
 
             ctx: RenderCtx = RenderCtx(
-                input_attachments=input_attachments, 
-                framebuffer=framebuffer, 
+                input_attachments=input_attachments,
+                framebuffer=framebuffer,
                 viewport=viewport
             )
-            
+
             render_pass.render_callback(ctx)
 
 
 def make_buffer(info: AttachmentInfo) -> Buffer:
+    assert info.width != 0 and info.height != 0, "attachment size is zero"
+
     clear_value: float | Vec4 | None = None
     if (info.format == Format.RGBA_UNORM or info.format == Format.RGBA_SFLOAT):
         clear_value = Vec4(0.0, 0.0, 0.0, 0.0)
     else:
         clear_value = 0.0
 
-    assert info.width != 0 and info.height != 0, "attachment size is zero"
-    if (info.width != 0 or info.height != 0):
-        print("uh oh")
-        
+    n_samples: int = info.msaa ** 2
     data: list[NamedTuple] = [clear_value for _ in range(
-        0, info.width * info.height * info.msaa)]
+        0, info.width * info.height * n_samples)]
     buffer: Buffer = Buffer(
         data=data, width=info.width, height=info.height,
         n_samples_per_axis=info.msaa,

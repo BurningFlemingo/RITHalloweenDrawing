@@ -40,162 +40,63 @@ class Scene:
     def __init__(self, viewport: Viewport):
         shadow_viewport: Viewport = Viewport(
             width=viewport.width, height=viewport.height)
-        
+
         self.render_graph: RenderGraph = RenderGraph()
 
-        msaa_color_attachment_info = AttachmentInfo(msaa=2)
-        msaa_depth_attachment_info = AttachmentInfo(msaa=2)
-        backbuffer_attachment_info = AttachmentInfo(
-            width=viewport.width, height=viewport.height, size_mode=SizeMode.ABSOLUTE, 
+        msaa_hdr_color_attachment_info = AttachmentInfo(msaa=2)
+        hdr_color_attachment_info = AttachmentInfo()
+        msaa_depth_attachment_info = AttachmentInfo(
+            format=Format.D_UNORM, msaa=2)
+        ldr_color_attachment_info = AttachmentInfo(
+            width=viewport.width, height=viewport.height, size_mode=SizeMode.ABSOLUTE,
             format=Format.RGBA_UNORM, color_space=ColorSpace.SRGB, is_transient=False
         )
-        shadow_buffer_attachment_info = AttachmentInfo(size_mode=SizeMode.ABSOLUTE, format=Format.RGBA_UNORM, width=200, height=200)
-        
-        self.backbuffer: Buffer = make_buffer(backbuffer_attachment_info)
+        shadow_map_attachment_info = AttachmentInfo(format=Format.D_UNORM)
+
+        self.backbuffer: Buffer = make_buffer(ldr_color_attachment_info)
         self.render_graph.import_attachment("backbuffer", self.backbuffer)
-        
-        self.render_graph.declare_attachment("shadow_map", shadow_buffer_attachment_info)
-        self.render_graph.declare_attachment("scene_depth_buffer", msaa_depth_attachment_info)
 
-        shadow_pass: RenderPass = self.render_graph.add_pass(RenderPass(shadow_viewport, self.shadow_pass))
-        shadow_pass.set_depth_output("shadow_map")
+        self.render_graph.declare_attachment(
+            "shadow_map", shadow_map_attachment_info)
+        self.render_graph.declare_attachment(
+            "scene_depth_buffer", msaa_depth_attachment_info)
+        self.render_graph.declare_attachment(
+            "msaa_hdr_color", msaa_hdr_color_attachment_info)
+        self.render_graph.declare_attachment(
+            "hdr_color", hdr_color_attachment_info)
 
-        light_pass: RenderPass = self.render_graph.add_pass(RenderPass(viewport, self.light_pass))
+        shadow_pass = RenderPass(shadow_viewport, self.shadow_pass)
+        shadow_pass.set_depth_attachment("shadow_map")
+
+        light_pass = RenderPass(viewport, self.light_pass)
         light_pass.add_input_attachment("shadow_map")
-        light_pass.set_depth_output("scene_depth_buffer")
-        light_pass.add_color_output("backbuffer")
+        light_pass.set_depth_attachment("scene_depth_buffer")
+        light_pass.add_color_output("msaa_hdr_color")
+
+        skybox_pass = RenderPass(viewport, self.skybox_pass)
+        skybox_pass.add_color_output("msaa_hdr_color")
+        skybox_pass.set_depth_attachment("scene_depth_buffer")
+
+        resolve_pass = RenderPass(viewport, self.resolve_pass)
+        resolve_pass.add_input_attachment("msaa_hdr_color")
+        resolve_pass.add_color_output("hdr_color")
+
+        tonemap_pass = RenderPass(viewport, self.tonemap_pass)
+        tonemap_pass.add_input_attachment("hdr_color")
+        tonemap_pass.add_color_output("backbuffer")
+
+        self.render_graph.add_pass(shadow_pass)
+        self.render_graph.add_pass(light_pass)
+        self.render_graph.add_pass(skybox_pass)
+        self.render_graph.add_pass(resolve_pass)
+        self.render_graph.add_pass(tonemap_pass)
 
         self.render_graph.compile()
-
-
-
-        n_samples_per_axis: float = 2
-
-        hdr_color_attachment = Buffer(
-            data=[Vec4(0.1, 0.1, 0.1, 1.0) for x in range(
-                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-
-        hdr_color_attachment_2 = Buffer(
-            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
-                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-
-        pingpong_color_attachment_1 = Buffer(
-            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
-                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-        pingpong_color_attachment_2 = Buffer(
-            data=[Vec4(0.0, 0.0, 0.0, 0.0) for x in range(
-                viewport.width * viewport.height * (n_samples_per_axis ** 2))],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-
-        hdr_resolve_attachment_1 = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0)
-                  for x in range(viewport.width * viewport.height)],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=1,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-        hdr_resolve_attachment_2 = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0)
-                  for x in range(viewport.width * viewport.height)],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=1,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-        ldr_color_attachment = Buffer(
-            data=[Vec3(0.0, 0.0, 0.0)
-                  for x in range(viewport.width * viewport.height)],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=1,
-            format=Format.UNORM, color_space=ColorSpace.SRGB
-        )
-
-        self.skybox = load_cubemap("assets\\skybox\\")
-
-        scene_depth_attachment = Buffer(
-            data=[float("inf") for x in range(viewport.width *
-                                              viewport.height * (n_samples_per_axis ** 2))],
-            width=viewport.width, height=viewport.height, n_samples_per_axis=n_samples_per_axis,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
-
-        shadow_map = Buffer(
-            data=[float("inf") for x in range(
-                shadow_viewport.width * shadow_viewport.height)],
-            width=shadow_viewport.width, height=shadow_viewport.height, n_samples_per_axis=1,
-            format=Format.SFLOAT, color_space=ColorSpace.LINEAR
-        )
 
         self.viewport: Viewport = viewport
         self.shadow_viewport: Viewport = shadow_viewport
 
         self.asset_manager: AssetManager = AssetManager()
-
-        self.shadow_framebuffer: Framebuffer = Framebuffer(
-            color_attachments=None, resolve_attachments=None, depth_attachment=shadow_map,
-            width=shadow_map.width, height=shadow_map.height,
-            n_samples_per_axis=shadow_map.n_samples_per_axis)
-
-        self.light_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment,
-                pingpong_color_attachment_1], None, scene_depth_attachment,
-            hdr_color_attachment.width, hdr_color_attachment.height, hdr_color_attachment.n_samples_per_axis)
-
-        self.skybox_framebuffer: Framebuffer = Framebuffer(
-            [hdr_color_attachment], [
-                hdr_resolve_attachment_1], scene_depth_attachment,
-            hdr_color_attachment_2.width, hdr_color_attachment_2.height, hdr_color_attachment_2.n_samples_per_axis)
-
-        self.tonemap_framebuffer: Framebuffer = Framebuffer(
-            [ldr_color_attachment], None, None,
-            ldr_color_attachment.width, ldr_color_attachment.height, ldr_color_attachment.n_samples_per_axis)
-
-        self.pingpong_framebuffers: list[Framebuffer] = [
-            Framebuffer(
-                [pingpong_color_attachment_1], None, None,
-                pingpong_color_attachment_1.width, pingpong_color_attachment_1.height, pingpong_color_attachment_1.n_samples_per_axis
-            ),
-            Framebuffer(
-                [pingpong_color_attachment_2], None, None,
-                pingpong_color_attachment_2.width, pingpong_color_attachment_2.height, pingpong_color_attachment_2.n_samples_per_axis
-            ),
-        ]
-
-        self.shadow_pipeline: GraphicsPipeline = GraphicsPipeline(
-            viewport=shadow_viewport,
-            framebuffer=self.shadow_framebuffer
-        )
-
-        self.light_pipeline: GraphicsPipeline = GraphicsPipeline(
-            viewport=viewport,
-            framebuffer=self.light_framebuffer
-        )
-        self.tonemap_pipeline: GraphicsPipeline = GraphicsPipeline(
-            viewport=viewport,
-            framebuffer=self.tonemap_framebuffer
-        )
-        self.skybox_pipeline: GraphicsPipeline = GraphicsPipeline(
-            viewport=viewport,
-            framebuffer=self.skybox_framebuffer
-        )
-
-        self.pingpong_pipelines: list[GraphicsPipeline] = [
-            GraphicsPipeline(
-                viewport=viewport,
-                framebuffer=self.pingpong_framebuffers[0]
-            ),
-            GraphicsPipeline(
-                viewport=viewport,
-                framebuffer=self.pingpong_framebuffers[1]
-            )
-        ]
 
         self.view_matrix: Mat4 = None
         self.light_space_matrix: Mat4 = None
@@ -207,6 +108,8 @@ class Scene:
         self.point_lights: list[PointLight] = []
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
+
+        self.skybox = load_cubemap("assets\\cave\\")
 
         setup_turtle(viewport.width, viewport.height)
 
@@ -264,8 +167,8 @@ class Scene:
 
     def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
-            shadow_buffer: Buffer = ctx.input_attachments[0]
-            
+            shadow_map: Buffer = ctx.input_attachments[0]
+
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
 
@@ -299,7 +202,7 @@ class Scene:
 
     def tonemap_pass(self, ctx: RenderCtx):
         hdr_attachment: Buffer = ctx.input_attachments[0]
-        
+
         self.post_process_pass(
             ctx,
             TonemapFragmentShader(hdr_attachment)
@@ -309,7 +212,6 @@ class Scene:
         src_buffer: Buffer = ctx.input_attachments[0]
         target_buffer: Buffer = ctx.framebuffer.color_attachments[0]
         resolve_buffer(src_buffer, target_buffer)
-        
 
     def blur_pass(self):
         self.post_process_pass(
@@ -323,7 +225,7 @@ class Scene:
                 self.pingpong_framebuffers[1].color_attachments[0], False)
         )
 
-    def skybox_pass(self, skybox: Cubemap):
+    def skybox_pass(self, ctx: RenderCtx):
 
         vertex_positions: list[Vec3] = [
             Vec3(-1.0,  1.0, -1.0),
@@ -365,12 +267,11 @@ class Scene:
 
         vertex_buffer = {"pos": vertex_positions}
 
-        draw(
-            pipeline=self.skybox_pipeline,
+        ctx.draw(
             vertex_buffer=vertex_buffer,
             vertex_shader=SkyboxVertexShader(
                 self.view_matrix, self.projection_matrix),
-            fragment_shader=SkyboxFragmentShader(skybox),
+            fragment_shader=SkyboxFragmentShader(self.skybox),
             vertex_count=len(vertex_positions),
             vertex_offset=0
         )
@@ -397,19 +298,11 @@ class Scene:
         )
 
     def render(self):
-        self.shadow_pass()
-        self.light_pass()
-        # self.skybox_pass(self.skybox)
-        resolve_buffer(
-            src=self.skybox_framebuffer.color_attachments[0],
-            target=self.skybox_framebuffer.resolve_attachments[0]
-        )
-        # self.blur_pass() # expensive
-        self.tonemap_pass()
+        self.render_graph.execute()
 
     def present(self):
         present_backbuffer(
-            self.tonemap_framebuffer.color_attachments[0], self.viewport)
+            self.backbuffer, self.viewport)
 
     def finish(self):
         turtle.done()

@@ -96,7 +96,7 @@ def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace
 
         return Buffer(
             data=pixels, width=width, height=height, n_samples_per_axis=1,
-            format=Format.SFLOAT, color_space=dst_color_space)
+            format=Format.RGBA_SFLOAT, color_space=dst_color_space)
 
 
 def parse_mtl(path: str) -> dict[str, MaterialAsset]:
