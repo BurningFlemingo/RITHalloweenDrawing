@@ -39,22 +39,28 @@ class Camera:
 class Scene:
     def __init__(self, viewport: Viewport):
         self.render_graph: RenderGraph = RenderGraph()
-        
-        msaa_color_attachment_info = AttachmentInfo(clear_value=Vec4(0.0, 0.0, 0.0, 0.0), msaa=2)
-        msaa_depth_attachment_info = AttachmentInfo(clear_value=float("inf"), msaa=2)
-        backbuffer_attachment_info = AttachmentInfo(clear_value=Vec4(0.5, 0.5, 0.5, 1.0), format=Format.UNORM, color_space=ColorSpace.SRGB) 
-        shadow_buffer_attachment_info = AttachmentInfo(clear_value=float("inf"), size_mode=SizeMode.ABSOLUTE, width=200, height=200) 
+
+        msaa_color_attachment_info = AttachmentInfo(
+            clear_value=Vec4(0.0, 0.0, 0.0, 0.0), msaa=2)
+        msaa_depth_attachment_info = AttachmentInfo(
+            clear_value=float("inf"), msaa=2)
+        backbuffer_attachment_info = AttachmentInfo(clear_value=Vec4(
+            0.5, 0.5, 0.5, 1.0), format=Format.UNORM, color_space=ColorSpace.SRGB)
+        shadow_buffer_attachment_info = AttachmentInfo(clear_value=float(
+            "inf"), size_mode=SizeMode.ABSOLUTE, width=200, height=200)
 
         self.backbuffer: Buffer = make_buffer(backbuffer_attachment_info)
         self.render_graph.set_backbuffer("backbuffer", self.backbuffer)
-        
+
         shadow_pass: RenderPass = self.render_graph.add_pass(RenderPass())
-        shadow_pass.set_depth_output("shadow_buffer", shadow_buffer_attachment_info)
+        shadow_pass.set_depth_output(
+            "shadow_buffer", shadow_buffer_attachment_info)
 
         light_pass: RenderPass = self.render_graph.add_pass(RenderPass())
         light_pass.add_input_attachment("shadow_buffer")
-        light_pass.set_depth_output("scene_depth_buffer", Usage.WRITE_ONLY, msaa_depth_attachment_info)
-        light_pass.add_color_output("backbuffer", Usage.WRITE_ONLY, backbuffer_attachment_info)
+        light_pass.set_depth_output(
+            "scene_depth_buffer", msaa_depth_attachment_info)
+        light_pass.add_color_output("backbuffer", backbuffer_attachment_info)
 
         self.render_graph.compile()
 
