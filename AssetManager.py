@@ -25,6 +25,13 @@ class AssetManager:
     def __init__(self):
         self.m_loaded_texture_cache: dict[str, Buffer] = {}
 
+    def load_texture(self, path: str) -> Buffer:
+        if (path not in self.m_loaded_texture_cache):
+            self.m_loaded_texture_cache[path] = \
+                load_bmp(path, ColorSpace.SRGB, ColorSpace.LINEAR)
+                
+        return self.m_loaded_texture_cache[path]
+
     def load_model(self, model_path: str) -> list[Mesh]:
         mesh_assets: list[MeshAsset] = parse_obj(model_path)
         meshes: list[Mesh] = []
