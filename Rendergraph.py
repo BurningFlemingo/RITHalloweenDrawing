@@ -40,83 +40,124 @@ class AttachmentInfo:
     is_transient: bool = True
 
 
+@dataclass
+class Attachment:
+    buffer: Buffer
+    size_mode: SizeMode
+    
+    is_transient: bool
+    is_allocated: bool
+
+
+class AttachmentType(Enum):
+    COLOR = 1, 
+    DEPTH = 2
+
+
+class AttachmentHandle(NamedTuple):
+    uid: int
+    type: AttachmentType
+    
+    debug_name: str = ""
+
+
 class RenderPass:
     def __init__(self, viewport: Viewport, callback: Callable[[RenderCtx], None]):
         self.viewport = viewport
 
-        self.inputs: list[str] = []
+        self.input_attachments: list[AttachmentHandle] = []
+        self.output_color_attachments: list[AttachmentHandle] = []
+        
+        self.depth_attachment: AttachmentHandle | None = None # aliases a read/write attachment
 
-        self.color_outputs: list[str] = []
-        self.depth_attachment: str | None = None
+        self.clear_values: dict[AttachmentHandle, Vec4 |
+                                float | None] = {}  # [attachment.uid, ClearValue]
 
-        self.clear_values: dict[str, Vec4 |
-                                float | None] = {}  # [str, ClearValue]
+        self.render_callback: Callable[[RenderCtx], None] = callback
 
-        self.render_callback: Callable[[RenderCtx], None] | None = callback
+    def add_input_attachment(self, handle: AttachmentHandle):
+        self.input_attachments.append(handle)
 
-    def add_input_attachment(self, name: str):
-        self.inputs.append(name)
+    def add_color_output(self, handle: AttachmentHandle, clear_color: Vec4 | None = None):
+        assert handle not in self.output_color_attachments
+        assert handle.type != AttachmentType.DEPTH, "depth attachment cannot be a color target"
+        
+        self.output_color_attachments.append(handle)
+        self.clear_values[handle] = clear_color
 
-    def add_color_output(self, name: str, clear_color: Vec4 | None = None):
-        self.color_outputs.append(name)
-        self.clear_values[name] = clear_color
-
-    def set_depth_attachment(self, name: str, clear_value: float | None = None):
-        self.depth_attachment = name
-        self.clear_values[name] = clear_value
+    def set_depth_attachment(self, handle: AttachmentHandle, clear_value: float | None = None):
+        assert handle.type == AttachmentType.DEPTH
+        
+        self.depth_attachment = handle
+        self.clear_values[handle] = clear_value
 
 
 class RenderGraph:
     def __init__(self):
         self.render_passes: list[RenderPass] = []
-        self.attachments: dict[str, Buffer] = {}
-        self.attachment_infos: dict[str, AttachmentInfo] = {}
+        self.attachments: list[Attachment] = []
 
-    def declare_attachment(self, name: str, info: AttachmentInfo):
-        self.attachment_infos[name] = info
+    def make_attachment(self, info: AttachmentInfo, debug_name: str = "") -> AttachmentHandle:
+        index: int = len(self.attachments)
+        attachment_type: AttachmentType = AttachmentType.COLOR
+        if (info.format == Format.D_UNORM or info.format == Format.D_SFLOAT):
+            attachment_type = AttachmentType.DEPTH
 
-    def import_attachment(self, name: str, buffer: Buffer):
-        attachment_info = AttachmentInfo(
-            size_mode=SizeMode.ABSOLUTE,
-            width=buffer.width,
-            height=buffer.height,
-            msaa=buffer.n_samples_per_axis,
-            format=buffer.format,
-            color_space=buffer.color_space,
-            is_transient=False
-        )
-        self.attachments[name] = buffer
-        self.attachment_infos[name] = attachment_info
+        handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
+        buffer: Buffer = Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space)
+        attachment = Attachment(buffer=buffer, size_mode=info.size_mode, is_transient=info.is_transient, is_allocated=False)
+        
+        self.attachments.append(attachment)
+        
+        return handle
 
-    def add_pass(self, render_pass: RenderPass) -> RenderPass:
+    def import_attachment(self, buffer: Buffer, debug_name: str ="") -> AttachmentHandle:
+        index: int = len(self.attachments)
+        attachment_type: AttachmentType = AttachmentType.COLOR
+        if (buffer.format == Format.D_UNORM or buffer.format == Format.D_SFLOAT):
+            attachment_type = AttachmentType.DEPTH
+            
+        handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
+        attachment = Attachment(buffer=buffer, size_mode=SizeMode.ABSOLUTE, is_transient=True, is_allocated=True)
+            
+        self.attachments.append(attachment)
+
+        return handle
+        
+
+    def make_pass(self, viewport: Viewport, callback: Callable[[RenderCtx], None]) -> RenderPass:
+        self.render_passes.append(RenderPass(viewport, callback))
+        return self.render_passes[-1]
+
+    def add_pass(self, render_pass: RenderPass):
         self.render_passes.append(render_pass)
         return self.render_passes[-1]
 
-    def get_attachment(self, name: str) -> Buffer:
-        return self.attachments[name]
-
     def compile(self):
         for render_pass in self.render_passes:
-            if (render_pass.depth_attachment != None and render_pass.depth_attachment not in self.attachments):
-                info: AttachmentInfo = self.attachment_infos[render_pass.depth_attachment]
-                if (info.size_mode == SizeMode.VIEWPORT):
-                    info.width = render_pass.viewport.width
-                    info.height = render_pass.viewport.height
-
-                self.attachments[render_pass.depth_attachment] = make_buffer(
-                    info)
-
-            for name in render_pass.color_outputs:
-                assert name in self.attachment_infos, f"{
-                    name} attachment was never added to graph"
-
-                info: AttachmentInfo = self.attachment_infos[name]
-                if (name not in self.attachments):
-                    if (info.size_mode == SizeMode.VIEWPORT):
-                        info.width = render_pass.viewport.width
-                        info.height = render_pass.viewport.height
-
-                    self.attachments[name] = make_buffer(info)
+            attachments: list[AttachmentHandle] | None = None
+            if (render_pass.depth_attachment != None):
+                attachments = render_pass.input_attachments + render_pass.output_color_attachments + [render_pass.depth_attachment]
+            else:
+                attachments = render_pass.input_attachments + render_pass.output_color_attachments
+                
+            for handle in attachments:
+                assert handle.uid < len(self.attachments),\
+                f"{handle.uid}:{handle.debug_name} attachment was never added to graph"
+                
+                attachment: Attachment = self.attachments[handle.uid]
+                if (attachment.is_allocated == False):
+                    if (attachment.size_mode == SizeMode.VIEWPORT):
+                        attachment.buffer = Buffer(
+                            data=attachment.buffer.data, 
+                            width=render_pass.viewport.width, 
+                            height=render_pass.viewport.height, 
+                            n_samples_per_axis=attachment.buffer.n_samples_per_axis,
+                            format=attachment.buffer.format,
+                            color_space=attachment.buffer.color_space
+                        )
+                    allocate_buffer(attachment.buffer)
+                    attachment.is_allocated = True
 
     def execute(self):
         for render_pass in self.render_passes:
@@ -126,30 +167,37 @@ class RenderGraph:
 
             msaa: int = 0
 
-            assert render_pass.depth_attachment == None or render_pass.depth_attachment in self.attachments, f"{
-                render_pass.depth_attachment} attachment not found in graph"
-            if (render_pass.depth_attachment in self.attachments):
-                depth_attachment: Buffer = self.attachments[render_pass.depth_attachment]
+            if (render_pass.depth_attachment != None):
+                uid: int = render_pass.depth_attachment.uid
+                depth_attachment = self.attachments[uid].buffer
+                msaa = depth_attachment.n_samples_per_axis
+            
+                
+            for handle in render_pass.output_color_attachments:
+                assert handle.uid < len(self.attachments),\
+                f"{handle.uid}:{handle.debug_name} attachment not found in graph"
 
-                msaa = max(msaa, depth_attachment.n_samples_per_axis)
-
-            for name in render_pass.color_outputs:
-                assert name in self.attachments, f"{
-                    name} attachment not found in graph"
-
-                buffer: Buffer = self.attachments[name]
-                clear_value: Vec4 | float | None = render_pass.clear_values[name]
+                attachment: Attachment = self.attachments[handle.uid]
+                assert attachment.buffer != None
+                
+                buffer: Buffer = attachment.buffer
+                
+                clear_value: Vec4 | float | None = render_pass.clear_values[handle]
                 if (clear_value != None):
-                    clear_buffer(buffer, clear_value)
+                    clear_buffer(attachment.buffer, clear_value)
 
-                color_output_attachments.append(buffer)
                 msaa = max(msaa, buffer.n_samples_per_axis)
+                
+                color_output_attachments.append(buffer)
 
-            for name in render_pass.inputs:
-                assert name in self.attachments, f"{
-                    name} attachment not found in graph"
+            for handle in render_pass.input_attachments:
+                assert handle.uid < len(self.attachments),\
+                f"{handle.uid}:{handle.debug_name} attachment not found in graph"
 
-                buffer: Buffer = self.attachments[name]
+                attachment: Attachment = self.attachments[handle.uid]
+                assert attachment.buffer != None
+
+                buffer: Buffer = attachment.buffer
                 input_attachments.append(buffer)
 
             viewport: Viewport = render_pass.viewport
@@ -173,18 +221,28 @@ class RenderGraph:
 def make_buffer(info: AttachmentInfo) -> Buffer:
     assert info.width != 0 and info.height != 0, "attachment size is zero"
 
-    clear_value: float | Vec4 | None = None
-    if (info.format == Format.RGBA_UNORM or info.format == Format.RGBA_SFLOAT):
-        clear_value = Vec4(0.0, 0.0, 0.0, 0.0)
-    else:
-        clear_value = 0.0
-
-    n_samples: int = info.msaa ** 2
-    data: list[NamedTuple] = [clear_value for _ in range(
-        0, info.width * info.height * n_samples)]
     buffer: Buffer = Buffer(
-        data=data, width=info.width, height=info.height,
+        data=[], width=info.width, height=info.height,
         n_samples_per_axis=info.msaa,
         format=info.format, color_space=info.color_space
     )
+
+    allocate_buffer(buffer)
+    
     return buffer
+
+
+def allocate_buffer(buf: Buffer) -> None:
+    assert len(buf.data) == 0, "attempting to allocate already allocated buffer"
+    
+    clear_value: float | Vec4 | None = None
+    if (buf.format == Format.RGBA_UNORM or buf.format == Format.RGBA_SFLOAT):
+        clear_value = Vec4(0.0, 0.0, 0.0, 0.0)
+    else:
+        clear_value = float("inf")
+
+    n_samples: int = buf.n_samples_per_axis ** 2
+    data: list[Vec4 | float] = [clear_value for _ in range(
+        0, buf.width * buf.height * n_samples)]
+
+    buf.data.extend(data)

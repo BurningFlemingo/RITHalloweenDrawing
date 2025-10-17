@@ -75,7 +75,7 @@ class PhongFragmentShader:
 
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
         skybox_frag_color: Vec3 = Vec3(
-            *self.skybox.sample(reflected_view_dir)[:3]) * 10
+            *self.skybox.sample(reflected_view_dir)[:3]) * 5
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
@@ -109,8 +109,8 @@ class PhongFragmentShader:
             frag_color += calc_spot_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
         # rgb luma coefficients from the Rec. 709 Standard
-        frag_color *= skybox_frag_color
-
+        frag_color += skybox_frag_color
+        
         brightness: float = dot(frag_color, Vec3(0.2126, 0.7152, 0.0722))
         bloom_color: Vec3 = Vec3(0, 0, 0)
         if (brightness > 1.0):

@@ -124,7 +124,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
         
     w3 = 1.0 - w1 - w2
     
-    if (fb.color_attachments is None):
+    if (len(fb.color_attachments) == 0):
         return False
     
     px_depth: float = 1.0 / (w1/p1.pos.w +

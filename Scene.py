@@ -9,7 +9,7 @@ from AssetManager import *
 from MatrixMath import *
 from Renderer import *
 from Cubemap import *
-from RenderGraph import *
+from Rendergraph import *
 
 
 from shaders.PhongLighting import *
@@ -43,53 +43,46 @@ class Scene:
 
         self.render_graph: RenderGraph = RenderGraph()
 
+        backbuffer_color_attachment_info = AttachmentInfo(
+            width=viewport.width, height=viewport.height, size_mode=SizeMode.ABSOLUTE,
+            format=Format.RGBA_UNORM, color_space=ColorSpace.SRGB
+        )
         msaa_hdr_color_attachment_info = AttachmentInfo(msaa=2)
         hdr_color_attachment_info = AttachmentInfo()
+        depth_attachment_info = AttachmentInfo(format=Format.D_UNORM)
         msaa_depth_attachment_info = AttachmentInfo(
             format=Format.D_UNORM, msaa=2)
-        ldr_color_attachment_info = AttachmentInfo(
-            width=viewport.width, height=viewport.height, size_mode=SizeMode.ABSOLUTE,
-            format=Format.RGBA_UNORM, color_space=ColorSpace.SRGB, is_transient=False
-        )
-        shadow_map_attachment_info = AttachmentInfo(format=Format.D_UNORM)
 
-        self.backbuffer: Buffer = make_buffer(ldr_color_attachment_info)
-        self.render_graph.import_attachment("backbuffer", self.backbuffer)
 
-        self.render_graph.declare_attachment(
-            "shadow_map", shadow_map_attachment_info)
-        self.render_graph.declare_attachment(
-            "scene_depth_buffer", msaa_depth_attachment_info)
-        self.render_graph.declare_attachment(
-            "msaa_hdr_color", msaa_hdr_color_attachment_info)
-        self.render_graph.declare_attachment(
-            "hdr_color", hdr_color_attachment_info)
+        self.backbuffer: Buffer = make_buffer(backbuffer_color_attachment_info)
+        backbuffer: AttachmentHandle = self.render_graph.import_attachment(self.backbuffer)
+        
+        hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        shadow_map: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
+        scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
+        msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
+        msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
 
-        shadow_pass = RenderPass(shadow_viewport, self.shadow_pass)
-        shadow_pass.set_depth_attachment("shadow_map")
+        shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
+        shadow_pass.set_depth_attachment(shadow_map)
 
-        light_pass = RenderPass(viewport, self.light_pass)
-        light_pass.add_input_attachment("shadow_map")
-        light_pass.set_depth_attachment("scene_depth_buffer")
-        light_pass.add_color_output("msaa_hdr_color")
+        light_pass = self.render_graph.make_pass(viewport, self.light_pass)
+        light_pass.set_depth_attachment(scene_depth_buffer)
+        light_pass.add_input_attachment(shadow_map)
+        light_pass.add_color_output(msaa_hdr_color_1)
+        light_pass.add_color_output(msaa_hdr_color_2)
 
-        skybox_pass = RenderPass(viewport, self.skybox_pass)
-        skybox_pass.add_color_output("msaa_hdr_color")
-        skybox_pass.set_depth_attachment("scene_depth_buffer")
+        skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
+        skybox_pass.add_color_output(msaa_hdr_color_1)
+        skybox_pass.set_depth_attachment(scene_depth_buffer)
 
-        resolve_pass = RenderPass(viewport, self.resolve_pass)
-        resolve_pass.add_input_attachment("msaa_hdr_color")
-        resolve_pass.add_color_output("hdr_color")
+        resolve_pass = self.render_graph.make_pass(viewport, self.resolve_pass)
+        resolve_pass.add_input_attachment(msaa_hdr_color_1)
+        resolve_pass.add_color_output(hdr_color)
 
-        tonemap_pass = RenderPass(viewport, self.tonemap_pass)
-        tonemap_pass.add_input_attachment("hdr_color")
-        tonemap_pass.add_color_output("backbuffer")
-
-        self.render_graph.add_pass(shadow_pass)
-        self.render_graph.add_pass(light_pass)
-        self.render_graph.add_pass(skybox_pass)
-        self.render_graph.add_pass(resolve_pass)
-        self.render_graph.add_pass(tonemap_pass)
+        tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
+        tonemap_pass.add_input_attachment(hdr_color)
+        tonemap_pass.add_color_output(backbuffer)
 
         self.render_graph.compile()
 
@@ -110,8 +103,7 @@ class Scene:
         self.spot_lights: list[SpotLight] = []
 
         self.skybox = load_cubemap("assets\\cave\\")
-
-        setup_turtle(viewport.width, viewport.height)
+        self.turtle_is_setup: bool = False
 
     def add_model(self, path: str, transform: Transform):
         self.models.append(self.asset_manager.load_model(path))
@@ -213,17 +205,17 @@ class Scene:
         target_buffer: Buffer = ctx.framebuffer.color_attachments[0]
         resolve_buffer(src_buffer, target_buffer)
 
-    def blur_pass(self):
-        self.post_process_pass(
-            self.pingpong_pipelines[1],
-            GaussianFragmentShader(
-                self.light_framebuffer.resolve_attachments[1], True)
-        )
-        self.post_process_pass(
-            self.pingpong_pipelines[0],
-            GaussianFragmentShader(
-                self.pingpong_framebuffers[1].color_attachments[0], False)
-        )
+    # def blur_pass(self):
+    #     self.post_process_pass(
+    #         self.pingpong_pipelines[1],
+    #         GaussianFragmentShader(
+    #             self.light_framebuffer.resolve_attachments[1], True)
+    #     )
+    #     self.post_process_pass(
+    #         self.pingpong_pipelines[0],
+    #         GaussianFragmentShader(
+    #             self.pingpong_framebuffers[1].color_attachments[0], False)
+    #     )
 
     def skybox_pass(self, ctx: RenderCtx):
 
@@ -301,6 +293,10 @@ class Scene:
         self.render_graph.execute()
 
     def present(self):
+        if (self.turtle_is_setup == False):
+            self.turtle_is_setup = True
+            setup_turtle(self.viewport.width, self.viewport.height)
+            
         present_backbuffer(
             self.backbuffer, self.viewport)
 

@@ -25,14 +25,15 @@ class ColorSpace(Enum):
 
 
 class Buffer(NamedTuple):
-    data: list[NamedTuple]
+    data: list[Vec4 | float]
+    
     width: int
     height: int
     n_samples_per_axis: int
 
     format: Format
     color_space: ColorSpace = ColorSpace.NONE
-
+    
     def write_samples(self, x: int, y: int, val: NamedTuple, sample_indices: list[int]):
         val = transfer_format(val, Format.RGBA_SFLOAT, self.format)
         val = transfer_color_space(val, ColorSpace.LINEAR, self.color_space)
@@ -83,7 +84,7 @@ class Buffer(NamedTuple):
 
 class Framebuffer(NamedTuple):
     color_attachments: list[Buffer]
-    depth_attachment: Buffer
+    depth_attachment: Buffer | None
 
     width: int
     height: int
@@ -91,7 +92,7 @@ class Framebuffer(NamedTuple):
     n_samples_per_axis: int
 
 
-def transfer_format(src_val: NamedTuple, src_format: Format, dst_format: Format) -> NamedTuple:
+def transfer_format(src_val: Vec4 | float, src_format: Format, dst_format: Format) -> Vec4 | float:
     if (src_format == Format.RGBA_SFLOAT and dst_format == Format.RGBA_UNORM):
         elements: list[float] = []
         for element in src_val:
