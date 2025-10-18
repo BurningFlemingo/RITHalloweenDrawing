@@ -24,9 +24,9 @@ def clip_triangle(v1: Vertex, v2: Vertex, v3: Vertex) -> list[Triangle]:
 
     ndc_triangles: list[Triangle] = []
     for triangle in triangles:
-        v1: Vertex = perspective_divide(triangle.v1)
-        v2: Vertex = perspective_divide(triangle.v2)
-        v3: Vertex = perspective_divide(triangle.v3)
+        v1 = perspective_divide(triangle.v1)
+        v2 = perspective_divide(triangle.v2)
+        v3 = perspective_divide(triangle.v3)
         ndc_triangles.append(Triangle(v1, v2, v3))
 
     return ndc_triangles
@@ -64,7 +64,7 @@ def clip_triangle_against_plane(plane_normal: Vec4, plane_distance: float, trian
 
 def interpolate_vertex(va: Vertex, vb: Vertex, t: float) -> Vertex:
     pos: Vec4 = va.pos + ((vb.pos - va.pos) * t)
-    if (va.fragment_attributes is None or vb.fragment_attributes is None):
+    if (va.fragment_attributes == None or vb.fragment_attributes == None):
         return Vertex(pos=pos, fragment_attributes=None)
 
     n_attributes: int = len(va.fragment_attributes)

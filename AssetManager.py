@@ -54,9 +54,9 @@ class AssetManager:
                 ambient_color=material.ambient_color,
                 diffuse_color=material.diffuse_color, 
                 specular_color=material.specular_color,
-                ambient_map=Sampler2D(base=ambient_map),
-                diffuse_map=Sampler2D(base=diffuse_map),
-                specular_map=Sampler2D(base=specular_map),
+                ambient_map=Sampler2D(base=ambient_map).generate_mipmaps(),
+                diffuse_map=Sampler2D(base=diffuse_map).generate_mipmaps(),
+                specular_map=Sampler2D(base=specular_map).generate_mipmaps(),
                 normal_map=Sampler2D(normal_map, min_filtering_method=FilterMethod.NEAREST, mag_filtering_method=FilterMethod.NEAREST),
                 specular_sharpness=material.specular_sharpness
             )

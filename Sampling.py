@@ -21,8 +21,10 @@ class Sampler2D(NamedTuple):
     min_filtering_method: FilterMethod = FilterMethod.BILINEAR
     mag_filtering_method: FilterMethod = FilterMethod.NEAREST
     
-    dpx: float = 0
-    dpy: float = 0
+    dudx: float = 0
+    dudy: float = 0
+    dvdx: float = 0
+    dvdy: float = 0
 
     def get_size(self, lod: int=0) -> SizeDimensions:
         return SizeDimensions(self.base.width, self.base.height)
@@ -30,8 +32,9 @@ class Sampler2D(NamedTuple):
     def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
         return sample2D(self.base, u, v, self.min_filtering_method, mode, border_color)
 
-    def generate_mipmaps(self):
-        assert len(self.mip_chain) == 0, "can only generate mipmaps once"
+    def generate_mipmaps(self) -> Sampler2D:
+        if (len(self.mip_chain) > 0):
+            return self
         
         num_mip_levels: int = math.floor(math.log2(self.base.width))
         num_mip_levels = min(num_mip_levels, math.floor(math.log2(self.base.height)))
@@ -48,13 +51,15 @@ class Sampler2D(NamedTuple):
             buffer = new_mipmap
             self.mip_chain.append(new_mipmap)
 
+        return self
+
     def generate_mipmap(self, src: Buffer, target_width: int, target_height: int, method: FilterMethod) -> Buffer:
         data: list[float | Vec4] = []
 
         for y in range(0, target_height):
             for x in range(0, target_width):
-                u: float = x / (target_width - 1)
-                v: float = y / (target_height - 1)
+                u: float = x / (max(target_width - 1, 1))
+                v: float = y / (max(target_height - 1, 1))
                 data.append(filter(src, u, v, method))
 
         mipmap: Buffer = Buffer(
@@ -130,3 +135,4 @@ def filter(buf: Buffer, u: float, v: float, method: FilterMethod) -> Any:
         
         return l0 + (l1 - l0) * b
 
+    assert False, "unsupported filtering method"

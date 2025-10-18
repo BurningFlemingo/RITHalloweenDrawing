@@ -9,7 +9,7 @@ class Mat4(NamedTuple):
     row3: Vec4
     row4: Vec4
 
-    def __mul__(self, other):
+    def __mul__(self, other) -> Mat4 | Vec4:
         if isinstance(other, Mat4):
             transposed = transpose(other)
             rows: list[Vec4] = []
@@ -115,9 +115,9 @@ def make_normal_matrix(model_matrix: Mat4) -> Mat4:
         Doesnt work for non-uniform scaled model matrices
     """
     return Mat4(
-        Vec4(*model_matrix.row1[:3], 0),
-        Vec4(*model_matrix.row2[:3], 0),
-        Vec4(*model_matrix.row3[:3], 0),
+        Vec4(*model_matrix.row1.xyz, 0),
+        Vec4(*model_matrix.row2.xyz, 0),
+        Vec4(*model_matrix.row3.xyz, 0),
         Vec4(0, 0, 0, 1),
     )
 

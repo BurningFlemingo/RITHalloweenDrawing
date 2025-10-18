@@ -60,7 +60,7 @@ class PhongVertexShader:
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
-            pos=Vec3(*view_pos[:3]), tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
+            pos=view_pos.xyz, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
 
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
@@ -87,16 +87,17 @@ class PhongFragmentShader:
         frag_light_space_pos /= frag_light_space_pos.w
         current_depth: float = frag_light_space_pos.z
 
-        normal: Vec3 = Vec3(*material.normal_map.sample(*tex_uv)[:3])
+        print(shadow_map.dudx)
+
+        normal: Vec3 = material.normal_map.sample(*tex_uv).xyz
         normal = (normal * 2) - 1
-        normal = Vec3(*(tbn_matrix * Vec4(*normal, 0.0))[:3])
+        normal = (tbn_matrix * Vec4(*normal, 0.0)).xyz
         normal = normalize(normal)
         
         view_dir: Vec3 = normalize(pos * -1)
 
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
-        skybox_frag_color: Vec3 = Vec3(
-            *self.skybox.sample(reflected_view_dir)[:3]) * 5
+        skybox_frag_color: Vec3 = self.skybox.sample(reflected_view_dir).xyz * 5
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
