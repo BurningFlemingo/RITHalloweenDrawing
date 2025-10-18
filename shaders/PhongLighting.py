@@ -19,7 +19,6 @@ class PhongVertexShader:
 
     class OutAttributes(NamedTuple):
         pos: Vec3
-        og_normal: Vec3
         tex_uv: Vec2
         frag_light_space_pos: Vec4
         
@@ -43,11 +42,13 @@ class PhongVertexShader:
 
         world_pos: Vec4 = model_matrix * Vec4(*pos, 1.0)
         view_pos: Vec4 = view_matrix * world_pos
+
+        model_view_matrix: Mat4 = view_matrix * normal_matrix
         
-        T: Vec3 = normalize(normal_matrix * Vec4(*tangent, 0.0))
-        B: Vec3 = normalize(normal_matrix * Vec4(*bitangent, 0.0))
-        N: Vec3 = normalize(normal_matrix * Vec4(*normal, 0.0))
-        
+        T: Vec3 = normalize(model_view_matrix * Vec4(*tangent, 0.0))
+        B: Vec3 = normalize(model_view_matrix * Vec4(*bitangent, 0.0))
+        N: Vec3 = normalize(model_view_matrix * Vec4(*normal, 0.0))
+
         tbn_matrix: Mat4 = Mat4(
             Vec4(T.x, B.x, N.x, 0.0),
             Vec4(T.y, B.y, N.y, 0.0),
@@ -56,11 +57,10 @@ class PhongVertexShader:
         )
 
         frag_light_space_pos: Vec4 = light_space_matrix * world_pos
-        og_normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normal, 0.0))[:3])
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
-            pos=Vec3(*view_pos[:3]), og_normal=og_normal, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
+            pos=Vec3(*view_pos[:3]), tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
 
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
@@ -87,8 +87,6 @@ class PhongFragmentShader:
         frag_light_space_pos /= frag_light_space_pos.w
         current_depth: float = frag_light_space_pos.z
 
-        og_normal: Vec3 = normalize(attributes.og_normal)
-        
         normal: Vec3 = Vec3(*material.normal_map.sample(*tex_uv)[:3])
         normal = (normal * 2) - 1
         normal = Vec3(*(tbn_matrix * Vec4(*normal, 0.0))[:3])
@@ -139,4 +137,4 @@ class PhongFragmentShader:
         if (brightness > 1.0):
             bloom_color = frag_color
 
-        return [Vec4(*(normal * Vec3(1.0, 1.0, -1.0)), 1.0), Vec4(*bloom_color, 1.0)]
+        return [Vec4(*frag_color, 1.0), Vec4(*bloom_color, 1.0)]

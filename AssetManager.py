@@ -29,10 +29,10 @@ class AssetManager:
     def __init__(self):
         self.m_loaded_texture_cache: dict[str, Buffer] = {}
 
-    def load_texture(self, path: str) -> Buffer:
+    def load_texture(self, path: str, src_color_space: ColorSpace=ColorSpace.SRGB, dst_color_space: ColorSpace=ColorSpace.LINEAR) -> Buffer:
         if (path not in self.m_loaded_texture_cache):
             self.m_loaded_texture_cache[path] = \
-                load_bmp(path, ColorSpace.SRGB, ColorSpace.LINEAR)
+                load_bmp(path, src_color_space, dst_color_space)
                 
         return self.m_loaded_texture_cache[path]
 
@@ -46,7 +46,7 @@ class AssetManager:
             ambient_map: Buffer = self.load_texture(material.ambient_map_path)
             diffuse_map: Buffer = self.load_texture(material.diffuse_map_path)
             specular_map: Buffer = self.load_texture(material.specular_map_path)
-            normal_map: Buffer = self.load_texture(material.normal_map_path)
+            normal_map: Buffer = self.load_texture(material.normal_map_path, ColorSpace.LINEAR)
             
             loaded_material: Material = Material(
                 ambient_color=material.ambient_color, diffuse_color=material.diffuse_color, 
@@ -84,18 +84,18 @@ def calc_tangent_space(p1: Vec3, p2: Vec3, p3: Vec3, uv1: Vec2, uv2: Vec2, uv3: 
     duv1: Vec2 = uv2 - uv1
     duv2: Vec2 = uv3 - uv1
     
-    det: float = (duv1.x * duv2.y) - (duv2.x * duv1.y)
+    f: float = 1 / ((duv1.x * duv2.y) - (duv2.x * duv1.y))
 
     tangent: Vec3 = Vec3(
         (duv2.y * e1.x) - (duv1.y * e2.x), 
         (duv2.y * e1.y) - (duv1.y * e2.y), 
         (duv2.y * e1.z) - (duv1.y * e2.z), 
-    ) / det
+    ) * f
 
     bitangent: Vec3 = Vec3(
         (-duv2.x * e1.x) + (duv1.x * e2.x), 
         (-duv2.x * e1.y) + (duv1.x * e2.y), 
         (-duv2.x * e1.z) + (duv1.x * e2.z), 
-    ) / det
+    ) * f
 
     return tangent, bitangent

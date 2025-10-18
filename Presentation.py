@@ -35,8 +35,7 @@ def present_backbuffer(backbuffer: Buffer, viewport: Viewport) -> None:
         for x_px in range(0, viewport.width):
             px_index = y_px * backbuffer.width + x_px
 
-            px_color: Vec3 = backbuffer.data[px_index]
-            px_color = quantize_color(px_color, 32)
+            px_color: Vec3 = Vec3(*backbuffer.data[px_index][:3])
             color_changed: bool = px_color != pen_color
 
             if (color_changed):
