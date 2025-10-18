@@ -68,8 +68,8 @@ class RenderPass:
         self.input_attachments: list[AttachmentHandle] = []
         self.output_color_attachments: list[AttachmentHandle] = []
         
-        self.depth_attachment: AttachmentHandle | None = None # aliases a read/write attachment
-
+        self.depth_attachment: AttachmentHandle | None = None
+        
         self.clear_values: dict[AttachmentHandle, Vec4 |
                                 float | None] = {}  # [attachment.uid, ClearValue]
 

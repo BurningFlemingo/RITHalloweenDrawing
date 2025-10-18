@@ -63,6 +63,7 @@ class Scene:
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_ldr_color: AttachmentHandle = self.render_graph.make_attachment(msaa_ldr_color_attachment_info)
+        hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
@@ -73,17 +74,19 @@ class Scene:
         light_pass.add_color_output(msaa_hdr_color_1)
         light_pass.add_color_output(msaa_hdr_color_2)
 
-        skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
-        skybox_pass.add_color_output(msaa_hdr_color_1)
-        skybox_pass.set_depth_attachment(scene_depth_buffer)
-
-        tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
-        tonemap_pass.add_input_attachment(msaa_hdr_color_1)
-        tonemap_pass.add_color_output(msaa_ldr_color)
+        # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
+        # skybox_pass.add_color_output(msaa_hdr_color_1)
+        # skybox_pass.set_depth_attachment(scene_depth_buffer)
 
         resolve_pass = self.render_graph.make_pass(viewport, self.resolve_pass)
-        resolve_pass.add_input_attachment(msaa_ldr_color)
-        resolve_pass.add_color_output(backbuffer)
+        resolve_pass.add_input_attachment(msaa_hdr_color_1)
+        resolve_pass.add_color_output(hdr_color)
+
+        tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
+        tonemap_pass.add_input_attachment(hdr_color)
+        tonemap_pass.add_color_output(backbuffer)
+
+
 
         self.render_graph.compile()
 

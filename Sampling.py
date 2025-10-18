@@ -28,7 +28,7 @@ class Sampler2D(NamedTuple):
         return SizeDimensions(self.base.width, self.base.height)
     
     def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
-        return sample2D(self.base, u, v, self.min_filtering_method)
+        return sample2D(self.base, u, v, self.min_filtering_method, mode, border_color)
 
     def generate_mipmaps(self):
         assert len(self.mip_chain) == 0, "can only generate mipmaps once"
@@ -41,7 +41,7 @@ class Sampler2D(NamedTuple):
         buffer: Buffer = self.base
         for _ in range(0, num_mip_levels):
             width = width // 2
-            height = width // 2
+            height = height // 2
             
             new_mipmap: Buffer = self.generate_mipmap(buffer, width, height, self.min_filtering_method)
             
@@ -80,7 +80,7 @@ class Sampler3D(NamedTuple):
 
 def sample2D(buf: Buffer, u: float, v: float, method: FilterMethod, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
     if (buf.format == Format.D_UNORM or buf.format == Format.D_SFLOAT):
-        border_color = [border_color]
+        border_color = [border_color, 0, 0, 1]
 
     if (mode == WrappingMode.CLAMP):
         u = max(min(u, 1), 0)
@@ -92,11 +92,12 @@ def sample2D(buf: Buffer, u: float, v: float, method: FilterMethod, mode: Wrappi
     elif (mode == WrappingMode.REPEAT):
         u = u % 1
         v = v % 1
-
+        
+    assert u >= 0 and u <= 1 and v >= 0 and v <= 1
     val: Any = filter(buf, u, v, method)
     
     if (buf.format == Format.D_UNORM or buf.format == Format.D_SFLOAT):
-        val = [val]
+        val = [val, 0, 0, 1]
 
     val = transfer_format(val, buf.format, Format.RGBA_SFLOAT)
     val = transfer_color_space(val, buf.color_space, ColorSpace.LINEAR)
