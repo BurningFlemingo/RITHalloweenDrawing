@@ -48,6 +48,7 @@ class Scene:
             format=Format.RGBA_UNORM, color_space=ColorSpace.SRGB
         )
         msaa_hdr_color_attachment_info = AttachmentInfo(msaa=2)
+        msaa_ldr_color_attachment_info = AttachmentInfo(msaa=2, format=Format.RGBA_UNORM)
         hdr_color_attachment_info = AttachmentInfo()
         depth_attachment_info = AttachmentInfo(format=Format.D_UNORM)
         msaa_depth_attachment_info = AttachmentInfo(
@@ -57,11 +58,11 @@ class Scene:
         self.backbuffer: Buffer = make_buffer(backbuffer_color_attachment_info)
         backbuffer: AttachmentHandle = self.render_graph.import_attachment(self.backbuffer)
         
-        hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
         shadow_map: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
+        msaa_ldr_color: AttachmentHandle = self.render_graph.make_attachment(msaa_ldr_color_attachment_info)
 
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
@@ -72,17 +73,17 @@ class Scene:
         light_pass.add_color_output(msaa_hdr_color_1)
         light_pass.add_color_output(msaa_hdr_color_2)
 
-        skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
-        skybox_pass.add_color_output(msaa_hdr_color_1)
-        skybox_pass.set_depth_attachment(scene_depth_buffer)
-
-        resolve_pass = self.render_graph.make_pass(viewport, self.resolve_pass)
-        resolve_pass.add_input_attachment(msaa_hdr_color_1)
-        resolve_pass.add_color_output(hdr_color)
+        # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
+        # skybox_pass.add_color_output(msaa_hdr_color_1)
+        # skybox_pass.set_depth_attachment(scene_depth_buffer)
 
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
-        tonemap_pass.add_input_attachment(hdr_color)
-        tonemap_pass.add_color_output(backbuffer)
+        tonemap_pass.add_input_attachment(msaa_hdr_color_1)
+        tonemap_pass.add_color_output(msaa_ldr_color)
+
+        resolve_pass = self.render_graph.make_pass(viewport, self.resolve_pass)
+        resolve_pass.add_input_attachment(msaa_ldr_color)
+        resolve_pass.add_color_output(backbuffer)
 
         self.render_graph.compile()
 
@@ -172,8 +173,11 @@ class Scene:
                 light_space_matrix=self.light_space_matrix
             )
             for mesh in model:
-                vertex_buffer = {"pos": mesh.positions,
-                                 "normal": mesh.normals, "tex_uv": mesh.tex_uvs}
+                vertex_buffer = {
+                    "pos": mesh.positions, "tex_uv": mesh.tex_uvs,
+                    "normal": mesh.normals, "tangent": mesh.tangents, 
+                    "bitangent": mesh.bitangents
+                }
 
                 phong_fragment_shader = PhongFragmentShader(
                     material=mesh.material,

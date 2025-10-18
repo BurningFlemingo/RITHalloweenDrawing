@@ -11,14 +11,19 @@ from shaders.Lighting import *
 class PhongVertexShader:
     class Attributes(NamedTuple):
         pos: Vec3
-        normal: Vec3
         tex_uv: Vec2
+        
+        normal: Vec3
+        tangent: Vec3
+        bitangent: Vec3
 
     class OutAttributes(NamedTuple):
         pos: Vec3
-        normal: Vec3
+        og_normal: Vec3
         tex_uv: Vec2
         frag_light_space_pos: Vec4
+        
+        tbn_matrix: Mat4
 
     def __init__(self, model_matrix: Mat4, normal_matrix: Mat4, view_matrix: Mat4, projection_matrix: Mat4, light_space_matrix: Mat4):
         self.model_matrix = model_matrix
@@ -34,17 +39,28 @@ class PhongVertexShader:
         projection_matrix: Mat4 = self.projection_matrix
         light_space_matrix: Mat4 = self.light_space_matrix
 
-        pos, normal, tex_uv = in_attributes
+        pos, tex_uv, normal, tangent, bitangent = in_attributes
 
         world_pos: Vec4 = model_matrix * Vec4(*pos, 1.0)
         view_pos: Vec4 = view_matrix * world_pos
+        
+        T: Vec3 = normalize(normal_matrix * Vec4(*tangent, 0.0))
+        B: Vec3 = normalize(normal_matrix * Vec4(*bitangent, 0.0))
+        N: Vec3 = normalize(normal_matrix * Vec4(*normal, 0.0))
+        
+        tbn_matrix: Mat4 = Mat4(
+            Vec4(T.x, B.x, N.x, 0.0),
+            Vec4(T.y, B.y, N.y, 0.0),
+            Vec4(T.z, B.z, N.z, 0.0),
+            Vec4(0.0, 0.0, 0.0, 0.0),
+        )
 
-        normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normal, 1.0))[:3])
         frag_light_space_pos: Vec4 = light_space_matrix * world_pos
+        og_normal: Vec3 = Vec3(*(normal_matrix * Vec4(*normal, 0.0))[:3])
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
-            pos=Vec3(*view_pos[:3]), normal=normal, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos)
+            pos=Vec3(*view_pos[:3]), og_normal=og_normal, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
 
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
@@ -63,14 +79,21 @@ class PhongFragmentShader:
         shadow_map: Buffer = self.shadow_map
 
         pos: Vec3 = attributes.pos
-        normal: Vec3 = attributes.normal
         tex_uv: Vec2 = attributes.tex_uv
+        
+        tbn_matrix: Mat4 = attributes.tbn_matrix
 
         frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
         frag_light_space_pos /= frag_light_space_pos.w
         current_depth: float = frag_light_space_pos.z
 
+        og_normal: Vec3 = normalize(attributes.og_normal)
+        
+        normal: Vec3 = Vec3(*material.normal_map.sample(*tex_uv)[:3])
+        normal = (normal * 2) - 1
+        normal = Vec3(*(tbn_matrix * Vec4(*normal, 0.0))[:3])
         normal = normalize(normal)
+        
         view_dir: Vec3 = normalize(pos * -1)
 
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
@@ -116,4 +139,4 @@ class PhongFragmentShader:
         if (brightness > 1.0):
             bloom_color = frag_color
 
-        return [Vec4(*frag_color, 1.0), Vec4(*bloom_color, 1.0)]
+        return [Vec4(*(normal * Vec3(1.0, 1.0, -1.0)), 1.0), Vec4(*bloom_color, 1.0)]

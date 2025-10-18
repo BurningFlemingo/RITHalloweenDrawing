@@ -16,8 +16,25 @@ class Mat4(NamedTuple):
             for row in self:
                 rows.append(Vec4(*[dot(row, col) for col in transposed]))
             return Mat4(*rows)
-        else:
+        elif isinstance(other, Vec4):
             return Vec4(*[dot(row, other) for row in self])
+        
+        rows: list[Vec4] = []
+        for row in self:
+            rows.append(row * other)
+        return Mat4(*rows)
+
+    def __add__(self, other):
+        if isinstance(other, Mat4):
+            rows: list[Vec4] = [a + b for a, b in zip(self, other)]
+            return Mat4(*rows)
+        
+    def __truediv__(self, other):
+        if not isinstance(other, Mat4) and not isinstance(other, Vec4):
+            rows: list[Vec4] = []
+            for row in self:
+                rows.append(row / other)
+            return Mat4(*rows)
 
 
 def det2x2(a: Vec2, b: Vec2) -> float:

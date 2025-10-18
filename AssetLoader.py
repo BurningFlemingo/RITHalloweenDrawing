@@ -12,6 +12,7 @@ class MaterialAsset:
     ambient_map_path: str = "assets\\defaults\\solid_white.bmp"
     diffuse_map_path: str = "assets\\defaults\\solid_white.bmp"
     specular_map_path: str = "assets\\defaults\\solid_white.bmp"
+    normal_map_path: str = "assets\\defaults\\normal_map.bmp"
 
     specular_sharpness: float = 32
     name: str = "default"
@@ -64,7 +65,7 @@ def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace
         pixels: list[Vec4] = [
             Vec4(0, 0, 0, 0) for a in range(width * height)]
 
-        channel_max: float = ((2 ** (bytes_per_color_channel * 8)) - 1)
+        channel_max: int = ((2 ** (bytes_per_color_channel * 8)) - 1)
         channel_inv_max: float = 1.0 / channel_max
 
         for row in range(height):
@@ -111,7 +112,7 @@ def parse_mtl(path: str) -> dict[str, MaterialAsset]:
         material: MaterialAsset = MaterialAsset()
 
         for line in mtl:
-            items: [str] = line.strip().split()
+            items: list[str] = line.strip().split()
             if (len(items) == 0):
                 continue
             id: str = items[0]
@@ -139,6 +140,9 @@ def parse_mtl(path: str) -> dict[str, MaterialAsset]:
                 material.diffuse_map_path = directory + items[1]
             elif (id == "map_Ks"):
                 material.specular_map_path = directory + items[1]
+            elif (id == "bump"):
+                material.normal_map_path = directory + items[1]
+
         materials[material.name] = material
 
     [print(materials[key].name, ":", materials[key].diffuse_map_path)
@@ -161,10 +165,9 @@ def parse_obj(path: str) -> list[MeshAsset]:
             break
 
     with open(path) as obj:
-        n_vertices: int = 0
         current_mesh: MeshAsset = MeshAsset()
         for line in obj:
-            items: [str] = line.strip().split()
+            items: list[str] = line.strip().split()
             if (len(items) == 0):
                 continue
 
