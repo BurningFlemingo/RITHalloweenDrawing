@@ -103,27 +103,23 @@ def interpolate_attributes(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: f
 
 def patch_attribute(attrib: Any, dudx: float, dudy: float, dvdx: float, dvdy: float) -> Any:
     if (isinstance(attrib, Sampler2D)):
-        attrib = Sampler2D(
-            base=attrib.base, 
-            mip_chain=attrib.mip_chain, 
-            min_filtering_method=attrib.min_filtering_method, 
-            mag_filtering_method=attrib.mag_filtering_method, 
-            dudx=dudx, dudy=dudy, dvdx=dvdx, dvdy=dvdy
-        )
+        attrib.dudx = dudx
+        attrib.dudy = dudy
+        attrib.dvdx = dvdx
+        attrib.dvdy = dvdy
     elif(hasattr(attrib, "_fields")):
-        fields: list[Any] = []
         for i in range(0, len(attrib._fields)):
-            fields.append(patch_attribute(attrib[i], dudx, dudy, dvdx, dvdy))
-        attrib = type(attrib)(*fields)
-    elif(hasattr(attrib, "__dict__") and not isinstance(attrib, type) and not isinstance(attrib, Enum) and not isinstance(attrib, IntEnum)):
-        attrib = patch_object(attrib, dudx, dudy, dvdx, dvdy)
+            patch_attribute(attrib[i], dudx, dudy, dvdx, dvdy)
+    elif(hasattr(attrib, "__dict__") and not isinstance(attrib, type)):
+        patch_samplers(attrib, dudx, dudy, dvdx, dvdy)
 
     return attrib
 
-def patch_object(shader: FragmentShader, dudx: float, dudy: float, dvdx: float, dvdy: float):
+def patch_samplers(object: Any, dudx: float, dudy: float, dvdx: float, dvdy: float):
     assert object != None
-    for key, value in shader.__dict__.items():
-        object.__dict__[key] = patch_attribute(value, dudx, dudy, dvdx, dvdy)
+    
+    for attribute in object.__dict__.values():
+        patch_attribute(attribute, dudx, dudy, dvdx, dvdy)
         
 
 
@@ -163,7 +159,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, n_w1, n_w2, n_w3, px_depth)
 
-    patch_object(fragment_shader, 1, 2, 3, 4)
     colors: list[Vec4] = fragment_shader(interpolated_attributes)
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
@@ -178,6 +173,8 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
 
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+
+    
     n_subpx_per_axis: int = 256
 
     # attributes are pre-divided in perspective divide
@@ -216,6 +213,9 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
                             int(edge2.x) * n_subpx_per_axis)
     w2_px_step: Vec2 = Vec2(int(-edge3.y) * n_subpx_per_axis,
                             int(edge3.x) * n_subpx_per_axis)
+
+    if (fragment_shader != None):
+        patch_samplers(fragment_shader, 1, 2, 3, 4)
 
     initial_uv: Vec4 = Vec4(min_x_px * n_subpx_per_axis,
                             min_y_px * n_subpx_per_axis, 0, 1)

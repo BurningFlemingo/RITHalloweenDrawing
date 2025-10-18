@@ -9,7 +9,7 @@ class Mat4(NamedTuple):
     row3: Vec4
     row4: Vec4
 
-    def __mul__(self, other) -> Mat4 | Vec4:
+    def __mul__(self, other):
         if isinstance(other, Mat4):
             transposed = transpose(other)
             rows: list[Vec4] = []

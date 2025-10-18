@@ -4,6 +4,7 @@ from enum import Enum
 from VectorMath import *
 from Buffer import *
 from Cubemap import *
+from dataclasses import dataclass, field
 
 class FilterMethod(Enum):
     NEAREST = 0,
@@ -14,9 +15,10 @@ class SizeDimensions(NamedTuple):
     width: int
     height: int
 
-class Sampler2D(NamedTuple):
+@dataclass
+class Sampler2D:
     base: Buffer
-    mip_chain: list[Buffer] = []
+    mip_chain: list[Buffer] = field(default_factory=list)
 
     min_filtering_method: FilterMethod = FilterMethod.BILINEAR
     mag_filtering_method: FilterMethod = FilterMethod.NEAREST
@@ -32,7 +34,7 @@ class Sampler2D(NamedTuple):
     def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
         return sample2D(self.base, u, v, self.min_filtering_method, mode, border_color)
 
-    def generate_mipmaps(self) -> Sampler2D:
+    def generate_mipmaps(self):
         if (len(self.mip_chain) > 0):
             return self
         
@@ -72,7 +74,8 @@ class Sampler2D(NamedTuple):
 
 
 
-class Sampler3D(NamedTuple):
+@dataclass
+class Sampler3D:
     cubemap: Cubemap
 
     min_filtering_method: FilterMethod = FilterMethod.BILINEAR
