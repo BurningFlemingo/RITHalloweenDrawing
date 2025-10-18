@@ -4,9 +4,10 @@ from VectorMath import *
 from MatrixMath import *
 from shaders.Lighting import *
 from shaders.Quad import *
+from Sampling import *
 
 class TonemapFragmentShader:
-    def __init__(self, color_attachment: Buffer):
+    def __init__(self, color_attachment: Sampler2D):
         self.color_attachment = color_attachment
         
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
@@ -18,7 +19,6 @@ class TonemapFragmentShader:
         f: float = 0.30
         w: float = 11.2
         
-        uv: Vec2 = attributes.uv
         # bloom_color: Vec3 = Vec3(*self.bloom_attachment.sampleUV(*attributes.uv)[:3])
         hdr_color: Vec3 = Vec3(*self.color_attachment.sample(*attributes.uv)[:3])
         mapped: Vec3 = ((hdr_color * (hdr_color * a + c * b) + d * e) / (hdr_color * (hdr_color * a + b) + d * f)) -e/f

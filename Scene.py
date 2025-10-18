@@ -73,9 +73,9 @@ class Scene:
         light_pass.add_color_output(msaa_hdr_color_1)
         light_pass.add_color_output(msaa_hdr_color_2)
 
-        # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
-        # skybox_pass.add_color_output(msaa_hdr_color_1)
-        # skybox_pass.set_depth_attachment(scene_depth_buffer)
+        skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
+        skybox_pass.add_color_output(msaa_hdr_color_1)
+        skybox_pass.set_depth_attachment(scene_depth_buffer)
 
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
         tonemap_pass.add_input_attachment(msaa_hdr_color_1)
@@ -103,7 +103,7 @@ class Scene:
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
 
-        self.skybox = load_cubemap("assets\\cave\\")
+        self.skybox = self.asset_manager.load_cubemap("assets\\cave\\")
         self.turtle_is_setup: bool = False
 
     def add_model(self, path: str, transform: Transform):
@@ -160,7 +160,7 @@ class Scene:
 
     def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
-            shadow_map: Buffer = ctx.input_attachments[0]
+            shadow_map: Sampler2D = Sampler2D(ctx.input_attachments[0])
 
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
@@ -197,7 +197,7 @@ class Scene:
                 )
 
     def tonemap_pass(self, ctx: RenderCtx):
-        hdr_attachment: Buffer = ctx.input_attachments[0]
+        hdr_attachment: Sampler2D = Sampler2D(ctx.input_attachments[0])
 
         self.post_process_pass(
             ctx,

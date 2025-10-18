@@ -4,7 +4,7 @@ from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
 from AssetLoader import *
-from Cubemap import *
+from Sampling import *
 
 
 class SkyboxVertexShader:
@@ -42,7 +42,7 @@ class SkyboxVertexShader:
 
 
 class SkyboxFragmentShader:
-    def __init__(self, skybox: Cubemap):
+    def __init__(self, skybox: Sampler3D):
         self.skybox = skybox
 
     def __call__(self, attributes: SkyboxVertexShader.OutAttributes) -> list[Vec4]:

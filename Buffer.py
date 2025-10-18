@@ -34,52 +34,13 @@ class Buffer(NamedTuple):
     format: Format
     color_space: ColorSpace = ColorSpace.NONE
     
-    def write_samples(self, x: int, y: int, val: NamedTuple, sample_indices: list[int]):
+    def write_samples(self, x: int, y: int, val: Any, sample_indices: list[int]):
         val = transfer_format(val, Format.RGBA_SFLOAT, self.format)
         val = transfer_color_space(val, ColorSpace.LINEAR, self.color_space)
 
         samples: int = self.n_samples_per_axis ** 2
         for sample in sample_indices:
             self.data[samples * (y * self.width + x) + sample] = val
-
-    def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
-        """
-            u and v should be normalized between 0 and 1.
-        """
-        if (self.format == Format.D_UNORM or self.format == Format.D_SFLOAT):
-            border_color = [border_color]
-
-        n_samples: int = self.n_samples_per_axis ** 2
-
-        max_x: int = self.width - 1
-        max_y: int = self.height - 1
-
-        x: int = int(u * max_x)
-        y: int = int(v * max_y)
-
-        if (mode == WrappingMode.CLAMP):
-            x = max(min(x, max_x), 0)
-            y = max(min(y, max_y), 0)
-        elif (mode == WrappingMode.CLAMP_TO_BORDER):
-            assert type(
-                border_color) is not None, "no border color selected on border wrapping mode"
-            if (x > max_x or x < 0 or y > max_y or y < 0):
-                return Vec4(*border_color)
-        elif (mode == WrappingMode.REPEAT):
-            x = x % max_x
-            y = y % max_y
-
-        index: int = (y * self.width + x) * n_samples
-
-        val: NamedTuple = self.data[index]
-
-        if (self.format == Format.D_UNORM or self.format == Format.D_SFLOAT):
-            val = [val]
-
-        val = transfer_format(val, self.format, Format.RGBA_SFLOAT)
-        val = transfer_color_space(val, self.color_space, ColorSpace.LINEAR)
-
-        return Vec4(*val)
 
 
 class Framebuffer(NamedTuple):
@@ -92,7 +53,7 @@ class Framebuffer(NamedTuple):
     n_samples_per_axis: int
 
 
-def transfer_format(src_val: Vec4 | float, src_format: Format, dst_format: Format) -> Vec4 | float:
+def transfer_format(src_val: Any, src_format: Format, dst_format: Format) -> Vec4 | float:
     if (src_format == Format.RGBA_SFLOAT and dst_format == Format.RGBA_UNORM):
         elements: list[float] = []
         for element in src_val:
@@ -101,7 +62,7 @@ def transfer_format(src_val: Vec4 | float, src_format: Format, dst_format: Forma
     return src_val
 
 
-def transfer_color_space(src_color: NamedTuple, src_space: ColorSpace, dst_space: ColorSpace) -> NamedTuple:
+def transfer_color_space(src_color: Any, src_space: ColorSpace, dst_space: ColorSpace) -> NamedTuple:
     gamma: float = 2.2
     if (dst_space == ColorSpace.SRGB and src_space == ColorSpace.LINEAR):
         channels: list[float] = []

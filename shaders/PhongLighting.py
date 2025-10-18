@@ -4,7 +4,7 @@ from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
 from AssetManager import *
-from Cubemap import *
+from Sampling import *
 from shaders.Lighting import *
 
 
@@ -66,7 +66,7 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Buffer, skybox: Cubemap):
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Sampler2D, skybox: Sampler3D):
         self.material = material
         self.point_lights = point_lights
         self.directional_lights = directional_lights
@@ -76,7 +76,7 @@ class PhongFragmentShader:
 
     def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
         material: Material = self.material
-        shadow_map: Buffer = self.shadow_map
+        shadow_map: Sampler2D = self.shadow_map
 
         pos: Vec3 = attributes.pos
         tex_uv: Vec2 = attributes.tex_uv
@@ -110,8 +110,8 @@ class PhongFragmentShader:
         shadow_scalar: float = 0.0
         for y in range(-1, 2):
             for x in range(-1, 2):
-                u: float = shadow_map_uv.x + x / shadow_map.width
-                v: float = shadow_map_uv.y + y / shadow_map.height
+                u: float = shadow_map_uv.x + x / shadow_map.get_size().width
+                v: float = shadow_map_uv.y + y / shadow_map.get_size().height
                 closest_depth: float = shadow_map.sample(
                     u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
                 if (current_depth <= 1.0):

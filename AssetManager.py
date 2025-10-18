@@ -1,4 +1,6 @@
 from AssetLoader import *
+from Sampling import *
+from Cubemap import *
 
 
 class Material(NamedTuple):
@@ -6,10 +8,10 @@ class Material(NamedTuple):
     diffuse_color: Vec3
     specular_color: Vec3
 
-    ambient_map: Buffer
-    diffuse_map: Buffer
-    specular_map: Buffer
-    normal_map: Buffer
+    ambient_map: Sampler2D
+    diffuse_map: Sampler2D 
+    specular_map: Sampler2D 
+    normal_map: Sampler2D 
 
     specular_sharpness: float
 
@@ -49,9 +51,14 @@ class AssetManager:
             normal_map: Buffer = self.load_texture(material.normal_map_path, ColorSpace.LINEAR)
             
             loaded_material: Material = Material(
-                ambient_color=material.ambient_color, diffuse_color=material.diffuse_color, 
-                specular_color=material.specular_color, ambient_map=ambient_map, diffuse_map=diffuse_map, 
-                specular_map=specular_map, normal_map=normal_map, specular_sharpness=material.specular_sharpness
+                ambient_color=material.ambient_color,
+                diffuse_color=material.diffuse_color, 
+                specular_color=material.specular_color,
+                ambient_map=Sampler2D(base=ambient_map),
+                diffuse_map=Sampler2D(base=diffuse_map),
+                specular_map=Sampler2D(base=specular_map),
+                normal_map=Sampler2D(normal_map, min_filtering_method=FilterMethod.NEAREST, mag_filtering_method=FilterMethod.NEAREST),
+                specular_sharpness=material.specular_sharpness
             )
             tangents: list[Vec3] = []
             bitangents: list[Vec3] = []
@@ -76,7 +83,21 @@ class AssetManager:
                 num_vertices=len(mesh_asset.positions)
             )
             meshes.append(mesh)
+            
         return meshes
+
+    def load_cubemap(self, dir_path: str) -> Sampler3D:
+        face_strings: list[str] = [
+            "right", "left", "top", "bottom", "front", "back"
+        ]
+        faces: list[Buffer] = []
+        for face_string in face_strings:
+            path: str = dir_path + face_string + ".bmp"
+            face: Buffer = self.load_texture(path)
+            faces.append(face)
+
+        cubemap = Cubemap(faces=faces)
+        return Sampler3D(cubemap=cubemap)
 
 def calc_tangent_space(p1: Vec3, p2: Vec3, p3: Vec3, uv1: Vec2, uv2: Vec2, uv3: Vec2):
     e1: Vec3 = p2 - p1

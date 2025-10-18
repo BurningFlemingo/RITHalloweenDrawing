@@ -28,6 +28,11 @@ class Mat4(NamedTuple):
         if isinstance(other, Mat4):
             rows: list[Vec4] = [a + b for a, b in zip(self, other)]
             return Mat4(*rows)
+
+    def __sub__(self, other):
+        if isinstance(other, Mat4):
+            rows: list[Vec4] = [a - b for a, b in zip(self, other)]
+            return Mat4(*rows)
         
     def __truediv__(self, other):
         if not isinstance(other, Mat4) and not isinstance(other, Vec4):
