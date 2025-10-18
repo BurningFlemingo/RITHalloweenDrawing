@@ -136,5 +136,5 @@ class PhongFragmentShader:
         bloom_color: Vec3 = Vec3(0, 0, 0)
         if (brightness > 1.0):
             bloom_color = frag_color
-
+            
         return [Vec4(*frag_color, 1.0), Vec4(*bloom_color, 1.0)]
