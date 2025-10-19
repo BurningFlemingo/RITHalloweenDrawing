@@ -37,20 +37,23 @@ class QuadParams(NamedTuple):
     px_list: list[Vec2]
     w1_list: list[int]
     w2_list: list[int]
+    semaphore: Barrier
 
 def ddy(val: Any) -> Any:
+    return 0
     id: int = g_tls.id
     g_ddy_list[id] = val
-    g_tls.barrier.wait()
+    g_tls.semaphore.wait()
 
     if (id == 0 or id == 2):
         return g_ddy_list[2] - g_ddy_list[0]
     return g_ddy_list[3] - g_ddy_list[1]
 
 def ddx(val: Any) -> Any:
+    return 0
     id: int = g_tls.id
     g_ddx_list[id] = val
-    g_tls.barrier.wait()
+    g_tls.semaphore.wait()
 
     if (id == 0 or id == 1):
         return g_ddx_list[1] - g_ddx_list[0]
@@ -194,25 +197,22 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
 
-def quad_worker(id: int, work_queue: Queue, barrier: Barrier):
+def quad_worker(id: int, work_queue: Queue):
     g_tls.id = id
-    g_tls.barrier = barrier
     while True:
         work_params = work_queue.get()
-        if work_params is None:
-            break
+        if (isinstance(work_params, Barrier)):
+            work_params.wait()
+            continue
+        max_x_px, max_y_px, px, w1, w2, semaphore = work_params
+        g_tls.semaphore = semaphore
         
-        max_x_px, max_y_px, px_list, w1_list, w2_list = work_params
-        
-        px: Vec2 = px_list[id]
         if (px.x < max_x_px and px.y < max_y_px):
-            shade_pixel(g_ctx, g_fragment_shader, px.x, px.y, w1_list[id], w2_list[id])
-            barrier.wait()
+            shade_pixel(g_ctx, g_fragment_shader, px.x, px.y, w1, w2)
 
 
-g_work_queues = [Queue() for _ in range(4)]
+g_quad_work_queues = [Queue() for _ in range(4)]
 g_threads = None
-g_barrier = Barrier(4)
 g_ctx = None
 g_fragment_shader = None
 
@@ -220,7 +220,7 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     global g_threads
     global g_barrier
     if g_threads is None:
-        g_threads = [Thread(target=quad_worker, args=[i, g_work_queues[i], g_barrier], daemon=True) for i in range(4)]
+        g_threads = [Thread(target=quad_worker, args=[i, g_quad_work_queues[i]], daemon=True) for i in range(4)]
         for thread in g_threads:
             thread.start()
     
@@ -280,12 +280,12 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     g_ctx = ctx
     g_fragment_shader = fragment_shader
 
+    semaphore = Barrier(4)
     for y_px in range(min_y_px, max_y_px - 1, 2):
         row_w1: float = w1
         row_w2: float = w2
 
         for x_px in range(min_x_px, max_x_px - 1, 2):
-            
             px_list: list[Vec2] = [
                 Vec2(x_px, y_px), Vec2(x_px + 1, y_px),
                 Vec2(x_px, y_px + 1), Vec2(x_px + 1, y_px + 1)
@@ -298,15 +298,19 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
                 w2, w2 + w2_px_step.x, w2 + w2_px_step.y, w2 + w2_px_step.x + w2_px_step.y
             ]
             
-            quad_params = (max_x_px, max_y_px, px_list, w1_list, w2_list)
+            for i in range(0, len(g_quad_work_queues)):
+                quad_params = (max_x_px, max_y_px, px_list[i], w1_list[i], w2_list[i], semaphore)
+                g_quad_work_queues[i].put(quad_params)
             
-            for queue in g_work_queues:
-                queue.put(quad_params)
-            
-
             w1 += w1_px_step.x * 2
             w2 += w2_px_step.x * 2
         w1 = row_w1 + w1_px_step.y * 2
         w2 = row_w2 + w2_px_step.y * 2
-
+        
+    semaphore.reset()
+    fence = Barrier(5)
+    for queue in g_quad_work_queues:
+        queue.put(fence)
+    fence.wait()
+        
     return True
