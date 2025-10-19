@@ -241,6 +241,36 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
         row_w2: float = w2
 
         for u_px in range(min_x_px, max_x_px - 1, 2):
+            if (p1.fragment_attributes != None):
+                centered_w1: float = (w1 + w1_px_step.x / 2 + w1_px_step.y / 2) / det
+                centered_w2: float = (w2 + w2_px_step.x / 2 + w2_px_step.y / 2) / det
+                centered_w3: float = (det - centered_w2 - centered_w1) / det
+                
+                next_w1: Vec2 = (w1_px_step/det) + centered_w1
+                next_w2: Vec2 = (w2_px_step/det) + centered_w2
+                next_w3: Vec2 = Vec2(1 - next_w2.x - next_w1.x, 1 - next_w2.y - next_w1.y)
+        
+                current_depth: float = 1/(centered_w1/p1.pos.w + centered_w2/p2.pos.w + centered_w3/p3.pos.w)
+                next_depth: Vec2 = Vec2(1/(next_w1.x/p1.pos.w + next_w2.x/p2.pos.w + next_w3.x/p3.pos.w),
+                    1/(next_w1.x/p1.pos.w + next_w2.x/p2.pos.w + next_w3.x/p3.pos.w))
+
+                current_attribs: NamedTuple = interpolate_attributes(
+                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
+                        centered_w1, centered_w2, centered_w3, current_depth)
+
+                next_attribs: Vec2 = Vec2(
+                    interpolate_attributes(
+                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
+                        next_w1.x, next_w2.x, next_w3.x, next_depth.x
+                    ),
+                    interpolate_attributes(
+                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
+                        next_w1.y, next_w2.y, next_w3.y, next_depth.y
+                    )
+                )
+
+                ddxy = differentiate_attributes(current_attribs, next_attribs)
+            
             shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2, ddxy)
             
             pixels_shaded: int = 1
