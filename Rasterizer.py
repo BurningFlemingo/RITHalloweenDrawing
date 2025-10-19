@@ -226,6 +226,8 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     w1: int = (int(edge2.x) * int(v5.y)) - (int(edge2.y) * int(v5.x))
     w2: int = (int(edge3.x) * int(v6.y)) - (int(edge3.y) * int(v6.x))
 
+
+
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
@@ -240,6 +242,9 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
         ddy: float = -current_depth
         
         for u_px in range(min_x_px, max_x_px - 1, 2):
+            w1 += w1_px_step.x / 2 + w1_px_step.y / 2
+            w2 += w2_px_step.x / 2 + w2_px_step.y / 2
+            
             next_w1_y: int = w1 + w1_px_step.y
             next_w2_y: int = w2 + w2_px_step.y
             next_w3_y: int = det - next_w2_y - next_w1_y
@@ -248,11 +253,8 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
             next_w2_x: int = w2 + w2_px_step.x
             next_w3_x: int = det - next_w2_x - next_w1_x
 
-            ddx += 1/(next_w1_x/p1.pos.w + next_w2_x/p2.pos.w + next_w3_x/p3.pos.w)
-            ddx *= det
-            
-            ddy += 1/(next_w1_y/p1.pos.w + next_w2_y/p2.pos.w + next_w3_y/p3.pos.w)
-            ddy *= det
+            w1 -= w1_px_step.x / 2 + w1_px_step.y / 2
+            w2 -= w2_px_step.x / 2 + w2_px_step.y / 2
             
             shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
             
@@ -264,7 +266,7 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
                 shade_pixel(ctx, fragment_shader, u_px, v_px + 1, next_w1_y, next_w2_y)
                 pixels_shaded += 1
             if (pixels_shaded == 3):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, next_w1_x + next_w1_y, next_w1_x + next_w2_y)
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y)
 
             w1 += w1_px_step.x * 2
             w2 += w2_px_step.x * 2
