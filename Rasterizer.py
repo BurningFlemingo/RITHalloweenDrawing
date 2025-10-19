@@ -8,6 +8,11 @@ from Sampling import *
 
 FragmentShader = Callable[[Any], list[Vec4]]
 
+class ScreenSpaceDerivitives(NamedTuple):
+    dw1: Vec2
+    dw2: Vec2
+    dw3: Vec2
+
 
 class RasterCtx(NamedTuple):
     fb: Framebuffer
@@ -37,7 +42,7 @@ def is_covered_edge(edge: Vec4) -> bool:
     return False
 
 
-def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> (list[int], int, int):
+def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> tuple[list[int], int, int]:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
     n_samples_per_axis: int = fb.n_samples_per_axis
     n_samples: int = n_samples_per_axis ** 2
@@ -120,7 +125,6 @@ def patch_samplers(object: Any, dudx: float, dudy: float, dvdx: float, dvdy: flo
     
     for attribute in object.__dict__.values():
         patch_attribute(attribute, dudx, dudy, dvdx, dvdy)
-        
 
 
 def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
@@ -159,6 +163,7 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, n_w1, n_w2, n_w3, px_depth)
 
+    patch_samplers(fragment_shader, 1, 2, 3, 4)
     colors: list[Vec4] = fragment_shader(interpolated_attributes)
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
@@ -173,8 +178,6 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
 
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
-
-    
     n_subpx_per_axis: int = 256
 
     # attributes are pre-divided in perspective divide
@@ -214,9 +217,6 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     w2_px_step: Vec2 = Vec2(int(-edge3.y) * n_subpx_per_axis,
                             int(edge3.x) * n_subpx_per_axis)
 
-    if (fragment_shader != None):
-        patch_samplers(fragment_shader, 1, 2, 3, 4)
-
     initial_uv: Vec4 = Vec4(min_x_px * n_subpx_per_axis,
                             min_y_px * n_subpx_per_axis, 0, 1)
 
@@ -229,15 +229,46 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
-    for v_px in range(min_y_px, max_y_px):
+    for v_px in range(min_y_px, max_y_px - 1, 2):
         row_w1: float = w1
         row_w2: float = w2
-        for u_px in range(min_x_px, max_x_px):
-            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
+        w3: float = det - w1 - w2
 
-            w1 += w1_px_step.x
-            w2 += w2_px_step.x
-        w1 = row_w1 + w1_px_step.y
-        w2 = row_w2 + w2_px_step.y
+        current_depth: float = 1/(w1/p1.pos.w + w2/p2.pos.w + w3/p3.pos.w)
+
+        ddx: float = -current_depth
+        ddy: float = -current_depth
+        
+        for u_px in range(min_x_px, max_x_px - 1, 2):
+            next_w1_y: int = w1 + w1_px_step.y
+            next_w2_y: int = w2 + w2_px_step.y
+            next_w3_y: int = det - next_w2_y - next_w1_y
+            
+            next_w1_x: int = w1 + w1_px_step.x
+            next_w2_x: int = w2 + w2_px_step.x
+            next_w3_x: int = det - next_w2_x - next_w1_x
+
+            ddx += 1/(next_w1_x/p1.pos.w + next_w2_x/p2.pos.w + next_w3_x/p3.pos.w)
+            ddx *= det
+            
+            ddy += 1/(next_w1_y/p1.pos.w + next_w2_y/p2.pos.w + next_w3_y/p3.pos.w)
+            ddy *= det
+            
+            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
+            
+            pixels_shaded: int = 1
+            if (u_px + 1 < max_x_px):
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, next_w1_x, next_w2_x)
+                pixels_shaded += 1
+            if (v_px + 1 < max_y_px):
+                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, next_w1_y, next_w2_y)
+                pixels_shaded += 1
+            if (pixels_shaded == 3):
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, next_w1_x + next_w1_y, next_w1_x + next_w2_y)
+
+            w1 += w1_px_step.x * 2
+            w2 += w2_px_step.x * 2
+        w1 = row_w1 + w1_px_step.y * 2
+        w2 = row_w2 + w2_px_step.y * 2
 
     return True
