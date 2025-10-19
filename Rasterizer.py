@@ -1,9 +1,16 @@
 from typing import Callable
+from threading import Thread, Barrier, local
+from queue import Queue
 
 from VectorMath import *
 from MatrixMath import *
 from RenderTypes import *
 from Sampling import *
+
+g_tls = local()
+
+g_ddx_list: list[Any] = [0, 0, 0, 0]
+g_ddy_list: list[Any] = [0, 0, 0, 0]
 
 
 FragmentShader = Callable[[Any], list[Vec4]]
@@ -23,6 +30,32 @@ class RasterCtx(NamedTuple):
     w1_bias: int
     w2_bias: int
     w3_bias: int
+
+class QuadParams(NamedTuple):
+    max_x_px: int
+    max_y_px: int
+    px_list: list[Vec2]
+    w1_list: list[int]
+    w2_list: list[int]
+
+def ddy(val: Any) -> Any:
+    id: int = g_tls.id
+    g_ddy_list[id] = val
+    g_tls.barrier.wait()
+
+    if (id == 0 or id == 2):
+        return g_ddy_list[2] - g_ddy_list[0]
+    return g_ddy_list[3] - g_ddy_list[1]
+
+def ddx(val: Any) -> Any:
+    id: int = g_tls.id
+    g_ddx_list[id] = val
+    g_tls.barrier.wait()
+
+    if (id == 0 or id == 1):
+        return g_ddx_list[1] - g_ddx_list[0]
+    return g_ddx_list[3] - g_ddx_list[2]
+    
 
 
 def is_covered_edge(edge: Vec4) -> bool:
@@ -112,28 +145,7 @@ def interpolate_attributes(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: f
 
     return type(p1_attrib)(*attributes)
 
-def patch_attribute(attrib: Any, dudx: float, dudy: float, dvdx: float, dvdy: float) -> Any:
-    if (isinstance(attrib, Sampler2D)):
-        attrib.dudx = dudx
-        attrib.dudy = dudy
-        attrib.dvdx = dvdx
-        attrib.dvdy = dvdy
-    elif(hasattr(attrib, "_fields")):
-        for i in range(0, len(attrib._fields)):
-            patch_attribute(attrib[i], dudx, dudy, dvdx, dvdy)
-    elif(hasattr(attrib, "__dict__") and not isinstance(attrib, type)):
-        patch_samplers(attrib, dudx, dudy, dvdx, dvdy)
-
-    return attrib
-
-def patch_samplers(object: Any, dudx: float, dudy: float, dvdx: float, dvdy: float):
-    assert object != None
-    
-    for attribute in object.__dict__.values():
-        patch_attribute(attribute, dudx, dudy, dvdx, dvdy)
-
-
-def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int, ddxy: Vec2) -> bool:
+def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
     n_samples: int = fb.n_samples_per_axis ** 2
@@ -169,7 +181,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, n_w1, n_w2, n_w3, px_depth)
 
-    patch_samplers(fragment_shader, 1, 2, 3, 4)
     colors: list[Vec4] = fragment_shader(interpolated_attributes)
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
@@ -183,7 +194,36 @@ def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
 
+def quad_worker(id: int, work_queue: Queue, barrier: Barrier):
+    g_tls.id = id
+    g_tls.barrier = barrier
+    while True:
+        work_params = work_queue.get()
+        if work_params is None:
+            break
+        
+        max_x_px, max_y_px, px_list, w1_list, w2_list = work_params
+        
+        px: Vec2 = px_list[id]
+        if (px.x < max_x_px and px.y < max_y_px):
+            shade_pixel(g_ctx, g_fragment_shader, px.x, px.y, w1_list[id], w2_list[id])
+            barrier.wait()
+
+
+g_work_queues = [Queue() for _ in range(4)]
+g_threads = None
+g_barrier = Barrier(4)
+g_ctx = None
+g_fragment_shader = None
+
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
+    global g_threads
+    global g_barrier
+    if g_threads is None:
+        g_threads = [Thread(target=quad_worker, args=[i, g_work_queues[i], g_barrier], daemon=True) for i in range(4)]
+        for thread in g_threads:
+            thread.start()
+    
     n_subpx_per_axis: int = 256
 
     # attributes are pre-divided in perspective divide
@@ -235,23 +275,34 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
-    ddxy = Vec2()
-    for v_px in range(min_y_px, max_y_px - 1, 2):
+    global g_ctx
+    global g_fragment_shader
+    g_ctx = ctx
+    g_fragment_shader = fragment_shader
+
+    for y_px in range(min_y_px, max_y_px - 1, 2):
         row_w1: float = w1
         row_w2: float = w2
 
-        for u_px in range(min_x_px, max_x_px - 1, 2):
-            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2, ddxy)
+        for x_px in range(min_x_px, max_x_px - 1, 2):
             
-            pixels_shaded: int = 1
-            if (u_px + 1 < max_x_px):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, w1 + w1_px_step.x, w2 + w2_px_step.x, ddxy)
-                pixels_shaded += 1
-            if (v_px + 1 < max_y_px):
-                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, w1 + w1_px_step.y, w2 + w2_px_step.y, ddxy)
-                pixels_shaded += 1
-            if (pixels_shaded == 3):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y, ddxy)
+            px_list: list[Vec2] = [
+                Vec2(x_px, y_px), Vec2(x_px + 1, y_px),
+                Vec2(x_px, y_px + 1), Vec2(x_px + 1, y_px + 1)
+            ]
+
+            w1_list: list[int] = [
+                w1, w1 + w1_px_step.x, w1 + w1_px_step.y, w1 + w1_px_step.x + w1_px_step.y
+            ]
+            w2_list: list[int] = [
+                w2, w2 + w2_px_step.x, w2 + w2_px_step.y, w2 + w2_px_step.x + w2_px_step.y
+            ]
+            
+            quad_params = (max_x_px, max_y_px, px_list, w1_list, w2_list)
+            
+            for queue in g_work_queues:
+                queue.put(quad_params)
+            
 
             w1 += w1_px_step.x * 2
             w2 += w2_px_step.x * 2

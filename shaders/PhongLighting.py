@@ -81,6 +81,7 @@ class PhongFragmentShader:
 
         pos: Vec3 = attributes.pos
         tex_uv: Vec2 = attributes.tex_uv
+        print(f"dudx={ddx(tex_uv.x)}, dudy={ddy(tex_uv.x)}, dvdx={ddx(tex_uv.y)}, dvdy={ddy(tex_uv.y)}")
         
         tbn_matrix: Mat4 = attributes.tbn_matrix
 
