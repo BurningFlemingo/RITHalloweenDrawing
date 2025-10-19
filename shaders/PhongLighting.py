@@ -6,6 +6,7 @@ from RenderTypes import *
 from AssetManager import *
 from Sampling import *
 from shaders.Lighting import *
+from Rasterizer import *
 
 
 class PhongVertexShader:

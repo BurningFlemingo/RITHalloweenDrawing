@@ -7,13 +7,7 @@ from Sampling import *
 
 
 FragmentShader = Callable[[Any], list[Vec4]]
-
-class ScreenSpaceDerivitives(NamedTuple):
-    dw1: Vec2
-    dw2: Vec2
-    dw3: Vec2
-
-
+        
 class RasterCtx(NamedTuple):
     fb: Framebuffer
 
@@ -93,8 +87,20 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> tupl
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
-def interpolate_attributes(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: float, w2: float, w3: float, px_depth: float) -> NamedTuple:
+def differentiate_attributes(current: Any, next: Vec2) -> Vec2:
+    n_attributes: int = len(current)
+    ddx: list  = []
+    ddy: list  = []
+    for attrib_index in range(0, n_attributes):
+        dadx = next.x[attrib_index] - current[attrib_index]
+        dady = next.y[attrib_index] - current[attrib_index]
+        
+        ddx.append(dadx)
+        ddy.append(dady)
 
+    return Vec2(type(current)(*ddx), type(current)(*ddy))
+
+def interpolate_attributes(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: float, w2: float, w3: float, px_depth: float) -> NamedTuple:
     n_attributes: int = len(p1_attrib)
     attributes = []
     for attrib_index in range(0, n_attributes):
@@ -127,7 +133,7 @@ def patch_samplers(object: Any, dudx: float, dudy: float, dvdx: float, dvdy: flo
         patch_attribute(attribute, dudx, dudy, dvdx, dvdy)
 
 
-def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
+def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int, ddxy: Vec2) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
     n_samples: int = fb.n_samples_per_axis ** 2
@@ -226,47 +232,26 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     w1: int = (int(edge2.x) * int(v5.y)) - (int(edge2.y) * int(v5.x))
     w2: int = (int(edge3.x) * int(v6.y)) - (int(edge3.y) * int(v6.x))
 
-
-
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
+    ddxy = Vec2()
     for v_px in range(min_y_px, max_y_px - 1, 2):
         row_w1: float = w1
         row_w2: float = w2
-        w3: float = det - w1 - w2
 
-        current_depth: float = 1/(w1/p1.pos.w + w2/p2.pos.w + w3/p3.pos.w)
-
-        ddx: float = -current_depth
-        ddy: float = -current_depth
-        
         for u_px in range(min_x_px, max_x_px - 1, 2):
-            w1 += w1_px_step.x / 2 + w1_px_step.y / 2
-            w2 += w2_px_step.x / 2 + w2_px_step.y / 2
-            
-            next_w1_y: int = w1 + w1_px_step.y
-            next_w2_y: int = w2 + w2_px_step.y
-            next_w3_y: int = det - next_w2_y - next_w1_y
-            
-            next_w1_x: int = w1 + w1_px_step.x
-            next_w2_x: int = w2 + w2_px_step.x
-            next_w3_x: int = det - next_w2_x - next_w1_x
-
-            w1 -= w1_px_step.x / 2 + w1_px_step.y / 2
-            w2 -= w2_px_step.x / 2 + w2_px_step.y / 2
-            
-            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
+            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2, ddxy)
             
             pixels_shaded: int = 1
             if (u_px + 1 < max_x_px):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, next_w1_x, next_w2_x)
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, w1 + w1_px_step.x, w2 + w2_px_step.x, ddxy)
                 pixels_shaded += 1
             if (v_px + 1 < max_y_px):
-                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, next_w1_y, next_w2_y)
+                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, w1 + w1_px_step.y, w2 + w2_px_step.y, ddxy)
                 pixels_shaded += 1
             if (pixels_shaded == 3):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y)
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y, ddxy)
 
             w1 += w1_px_step.x * 2
             w2 += w2_px_step.x * 2
