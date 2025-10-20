@@ -9,7 +9,7 @@ from shaders.Lighting import *
 from Rasterizer import *
 
 
-class PhongVertexShader:
+class GeometryVertexShader:
     class Attributes(NamedTuple):
         pos: Vec3
         tex_uv: Vec2
@@ -66,7 +66,7 @@ class PhongVertexShader:
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
 
-class PhongFragmentShader:
+class GeometryFragmentShader:
     def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Sampler2D, skybox: Sampler3D):
         self.material = material
         self.point_lights = point_lights

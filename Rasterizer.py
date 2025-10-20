@@ -87,37 +87,39 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> tupl
     return (samples_survived_indices, accumulated_w1, accumulated_w2)
 
 
-def differentiate_attributes(current: Any, next: Vec2) -> Vec2:
-    n_attributes: int = len(current)
-    ddx: list  = []
-    ddy: list  = []
-    for attrib_index in range(0, n_attributes):
-        dadx = next.x[attrib_index] - current[attrib_index]
-        dady = next.y[attrib_index] - current[attrib_index]
-        
-        ddx.append(dadx)
-        ddy.append(dady)
+def interpolate_attribute(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: float, w2: float, w3: float, px_depth: float) -> Any:
+    a1 = p1_attrib * w1
+    a2 = p2_attrib * w2
+    a3 = p3_attrib * w3
+    
+    interpolated = (a1 + a2 + a3) * px_depth
 
-    return Vec2(type(current)(*ddx), type(current)(*ddy))
-
+    return interpolated 
 def interpolate_attributes(p1_attrib: Any, p2_attrib: Any, p3_attrib: Any, w1: float, w2: float, w3: float, px_depth: float) -> NamedTuple:
     n_attributes: int = len(p1_attrib)
     attributes = []
     for attrib_index in range(0, n_attributes):
-        a1 = p1_attrib[attrib_index] * w1
-        a2 = p2_attrib[attrib_index] * w2
-        a3 = p3_attrib[attrib_index] * w3
-        interpolated = (a1 + a2 + a3) * px_depth
+        interpolated: Any = interpolate_attribute(
+                p1_attrib[attrib_index], p2_attrib[attrib_index], p3_attrib[attrib_index],
+                w1, w2, w3, px_depth
+        )
+        
         attributes.append(interpolated)
 
     return type(p1_attrib)(*attributes)
 
+def get_attribute(p1_attributes: Any, p2_attributes: Any, p3_attributes: Any, attribute_name: str) -> Vec3 | None:
+    for i in range(0, len(p1_attributes._fields)):
+        if (p1_attributes._fields[i] == attribute_name):
+            return Vec3(p1_attributes[i], p2_attributes[i], p3_attributes[i])
+        
+    return None
+
+
 def patch_attribute(attrib: Any, dudx: float, dudy: float, dvdx: float, dvdy: float) -> Any:
     if (isinstance(attrib, Sampler2D)):
-        attrib.dudx = dudx
-        attrib.dudy = dudy
-        attrib.dvdx = dvdx
-        attrib.dvdy = dvdy
+        attrib.duvdx = Vec2(dudx, dvdx)
+        attrib.duvdy = Vec2(dudy, dvdy)
     elif(hasattr(attrib, "_fields")):
         for i in range(0, len(attrib._fields)):
             patch_attribute(attrib[i], dudx, dudy, dvdx, dvdy)
@@ -169,7 +171,6 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
     interpolated_attributes: NamedTuple = interpolate_attributes(
         p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, n_w1, n_w2, n_w3, px_depth)
 
-    patch_samplers(fragment_shader, 1, 2, 3, 4)
     colors: list[Vec4] = fragment_shader(interpolated_attributes)
     for i in range(0, len(colors)):
         color: Vec4 = colors[i]
@@ -182,6 +183,44 @@ def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px
 def subpx_transform(point: Vec4, n_sub_px_per_axis: int) -> Vec4:
     return Vec4(round(point.x * n_sub_px_per_axis), round(point.y * n_sub_px_per_axis), point.z, point.w)
 
+
+def calc_duvdxy(ctx: RasterCtx, attribs: Vec3, w1: int, w2: int) -> tuple[float, float, float, float]:
+    fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
+    
+    centered_w1: float = (w1 + w1_px_step.x / 2 + w1_px_step.y / 2) / det
+    centered_w2: float = (w2 + w2_px_step.x / 2 + w2_px_step.y / 2) / det
+    centered_w3: float = (1 - centered_w2 - centered_w1)
+    
+    next_w1: Vec2 = (w1_px_step/det) + centered_w1
+    next_w2: Vec2 = (w2_px_step/det) + centered_w2
+    next_w3: Vec2 = Vec2(1 - next_w2.x - next_w1.x, 1 - next_w2.y - next_w1.y)
+    
+    current_depth: float = 1/(centered_w1/p1.pos.w + centered_w2/p2.pos.w + centered_w3/p3.pos.w)
+    next_depth: Vec2 = Vec2(1/(next_w1.x/p1.pos.w + next_w2.x/p2.pos.w + next_w3.x/p3.pos.w),
+        1/(next_w1.y/p1.pos.w + next_w2.y/p2.pos.w + next_w3.y/p3.pos.w))
+    
+    
+    current_attribs: Vec2 = interpolate_attribute(
+            attribs.x, attribs.y, attribs.z, centered_w1, centered_w2, centered_w3, current_depth)
+    
+    next_x_attribs: Vec2 = interpolate_attribute(
+            attribs.x, attribs.y, attribs.z, 
+            next_w1.x, next_w2.x, next_w3.x, next_depth.x
+        )
+        
+    next_y_attribs: Vec2 = interpolate_attribute(
+            attribs.x, attribs.y, attribs.z, 
+            next_w1.y, next_w2.y, next_w3.y, next_depth.y
+        )
+    
+    dudx: float = next_x_attribs.x - current_attribs.x
+    dudy: float = next_y_attribs.x - current_attribs.x
+    dvdx: float = next_x_attribs.y - current_attribs.y
+    dvdy: float = next_y_attribs.y - current_attribs.y
+
+    return (dudx, dudy, dvdx, dvdy)
+
+g_ddxy_is_enabled: bool = False
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
@@ -242,35 +281,11 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
 
         for u_px in range(min_x_px, max_x_px - 1, 2):
             if (p1.fragment_attributes != None):
-                centered_w1: float = (w1 + w1_px_step.x / 2 + w1_px_step.y / 2) / det
-                centered_w2: float = (w2 + w2_px_step.x / 2 + w2_px_step.y / 2) / det
-                centered_w3: float = (det - centered_w2 - centered_w1) / det
-                
-                next_w1: Vec2 = (w1_px_step/det) + centered_w1
-                next_w2: Vec2 = (w2_px_step/det) + centered_w2
-                next_w3: Vec2 = Vec2(1 - next_w2.x - next_w1.x, 1 - next_w2.y - next_w1.y)
-        
-                current_depth: float = 1/(centered_w1/p1.pos.w + centered_w2/p2.pos.w + centered_w3/p3.pos.w)
-                next_depth: Vec2 = Vec2(1/(next_w1.x/p1.pos.w + next_w2.x/p2.pos.w + next_w3.x/p3.pos.w),
-                    1/(next_w1.x/p1.pos.w + next_w2.x/p2.pos.w + next_w3.x/p3.pos.w))
+                tex_uv_attribs: Vec3 | None = get_attribute(p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, "tex_uv")
+                if (tex_uv_attribs is not None and g_ddxy_is_enabled):
+                    dudx, dudy, dvdx, dvdy = calc_duvdxy(ctx, tex_uv_attribs, w1, w2)
+                    patch_samplers(fragment_shader, dudx, dudy, dvdx, dvdy)
 
-                current_attribs: NamedTuple = interpolate_attributes(
-                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
-                        centered_w1, centered_w2, centered_w3, current_depth)
-
-                next_attribs: Vec2 = Vec2(
-                    interpolate_attributes(
-                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
-                        next_w1.x, next_w2.x, next_w3.x, next_depth.x
-                    ),
-                    interpolate_attributes(
-                        p1.fragment_attributes, p2.fragment_attributes, p3.fragment_attributes, 
-                        next_w1.y, next_w2.y, next_w3.y, next_depth.y
-                    )
-                )
-
-                ddxy = differentiate_attributes(current_attribs, next_attribs)
-            
             shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2, ddxy)
             
             pixels_shaded: int = 1

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 class FilterMethod(Enum):
     NEAREST = 0,
     BILINEAR = 1,
+    TRILINEAR = 1,
 
 
 class SizeDimensions(NamedTuple):
@@ -23,21 +24,92 @@ class Sampler2D:
     min_filtering_method: FilterMethod = FilterMethod.BILINEAR
     mag_filtering_method: FilterMethod = FilterMethod.NEAREST
     
-    dudx: float = 0
-    dudy: float = 0
-    dvdx: float = 0
-    dvdy: float = 0
+    duvdx: Vec2 = Vec2()
+    duvdy: Vec2 = Vec2()
 
-    def get_size(self, lod: int=0) -> SizeDimensions:
+    def get_size(self) -> SizeDimensions:
         return SizeDimensions(self.base.width, self.base.height)
+
+    def calc_lod(self):
+        lod: float = 0
+        
+        duvdx: Vec2 = self.duvdx * self.base.width
+        duvdy: Vec2 = self.duvdy * self.base.height
+
+        if (duvdx.x != 0 and duvdx.y != 0 and duvdy.x != 0 and duvdy.y != 0):
+            normalized_duvdx: Vec2 = normalize(duvdx)
+            normalized_duvdy: Vec2 = normalize(duvdy)
+            if (normalized_duvdx != normalized_duvdy and dot(normalized_duvdx, normalized_duvdy) != 0):
+                # https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm#LODCalculation
+                A: float = duvdx.y ** 2 + duvdy.y ** 2
+                B: float = -2 * (duvdx.x * duvdx.y + duvdy.x * duvdy.y)
+                C: float = duvdx.x ** 2 + duvdy.x ** 2
+                F: float = (duvdx.x * duvdy.y - duvdy.x * duvdx.y) ** 2
+
+                p: float = A - C
+                q: float = A + C
+                t: float = math.sqrt(p ** 2 + B ** 2)
+
+                sgn_B: float = 1 if B >= 0 else -1
+
+                duvdx = Vec2(
+                    math.sqrt(F * (t+p) / (t * (q+t))), 
+                    math.sqrt(F * (t-p) / (t * (q+t))) * sgn_B
+                )
+
+                duvdy = Vec2(
+                    math.sqrt(F * (t-p) / (t * (q-t))) * -sgn_B, 
+                    math.sqrt(F * (t+p) / (t * (q-t)))
+                )
+        
+            d: float = max(duvdx.magnitude(), duvdy.magnitude())
+            
+            lod_bias: float = -0.5
+            lod = max(min(math.log2(d) + lod_bias, len(self.mip_chain) - 1), 0)
+            
+        return lod
     
     def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
-        return sample2D(self.base, u, v, self.min_filtering_method, mode, border_color)
+        lod: float = 0
+        if (len(self.mip_chain) != 0):
+            lod = self.calc_lod()
+
+        if (self.min_filtering_method == FilterMethod.TRILINEAR):
+            lod_a: float = math.floor(lod)
+            lod_b: float = math.ceil(lod)
+            
+            if (lod_a <= 0):
+                buffer_a = self.base
+            else: 
+                buffer_a = self.mip_chain[lod_a - 1]
+
+            if (lod_b <= 0):
+                buffer_b = self.base
+            else: 
+                buffer_b = self.mip_chain[lod_b - 1]
+            
+            a: Vec4 = sample2D(buffer_a, u, v, FilterMethod.BILINEAR, mode, border_color)
+            
+            if (lod_a == lod_b):
+                return a
+            
+            b: Vec4 = sample2D(buffer_b, u, v, FilterMethod.BILINEAR, mode, border_color)
+            
+            t: float = (lod - lod_a) / (lod_b - lod_a)
+            return a + t * (b - a)
+        
+        if (math.floor(lod) <= 0):
+            buffer = self.base
+        else: 
+            buffer = self.mip_chain[math.floor(lod) - 1]       
+            
+        return sample2D(buffer, u, v, self.min_filtering_method, mode, border_color)
+
 
     def generate_mipmaps(self):
         if (len(self.mip_chain) > 0):
             return self
-        
+            
         num_mip_levels: int = math.floor(math.log2(self.base.width))
         num_mip_levels = min(num_mip_levels, math.floor(math.log2(self.base.height)))
 
