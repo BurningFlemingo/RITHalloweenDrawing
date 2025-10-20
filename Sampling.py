@@ -21,7 +21,7 @@ class Sampler2D:
     base: Buffer
     mip_chain: list[Buffer] = field(default_factory=list)
 
-    min_filtering_method: FilterMethod = FilterMethod.BILINEAR
+    min_filtering_method: FilterMethod = FilterMethod.TRILINEAR
     mag_filtering_method: FilterMethod = FilterMethod.NEAREST
     
     duvdx: Vec2 = Vec2()

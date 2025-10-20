@@ -18,6 +18,7 @@ from shaders.ToneMapping import *
 from shaders.Quad import *
 from shaders.GaussianBlur import *
 from shaders.Skybox import *
+from shaders.GeometryPass import *
 
 
 @dataclass
@@ -64,15 +65,20 @@ class Scene:
         msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_ldr_color: AttachmentHandle = self.render_graph.make_attachment(msaa_ldr_color_attachment_info)
         hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        
+        position_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        light_position_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        normal_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        albedo_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
 
+        geometry_pass = selt.render_graph.make_pass(viewport, self.geometry_pass)
         light_pass = self.render_graph.make_pass(viewport, self.light_pass)
         light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(shadow_map)
         light_pass.add_color_output(msaa_hdr_color_1)
-        light_pass.add_color_output(msaa_hdr_color_2)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
         # skybox_pass.add_color_output(msaa_hdr_color_1)
@@ -161,14 +167,14 @@ class Scene:
                     vertex_offset=0
                 )
 
-    def light_pass(self, ctx: RenderCtx):
+    def geometry_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
             shadow_map: Sampler2D = Sampler2D(ctx.input_attachments[0])
 
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
 
-            phong_vertex_shader = PhongVertexShader(
+            geometry_vertex_shader = GeometryVertexShader(
                 model_matrix=model_matrix,
                 normal_matrix=normal_matrix,
                 view_matrix=self.view_matrix,
@@ -198,6 +204,34 @@ class Scene:
                     vertex_count=mesh.num_vertices,
                     vertex_offset=0
                 )
+
+    def light_pass(self, ctx: RenderCtx):
+        positions: Sampler2D = Sampler2D(base=ctx.input_attachments[0])
+        light_positions: Sampler2D = Sampler2D(base=ctx.input_attachments[1])
+        normals: Sampler2D = Sampler2D(base=ctx.input_attachments[2])
+        albedo: Sampler2D = Sampler2D(base=ctx.input_attachments[3])
+        shadow_map: Sampler2D = Sampler2D(base=ctx.input_attachments[4])
+
+        point_lights: list[PointLight] = self.point_lights
+        directional_lights: list[DirectionalLight] = self.directional_lights
+        spot_lights: list[SpotLight] = self.spot_lights
+        
+        skybox: Sampler3D = self.skybox
+
+        fragment_shader = PhongFragmentShader(
+            positions=positions, 
+            light_positions=light_positions, 
+            normals=normals, 
+            albedo=albedo, 
+            shadow_map=shadow_map, 
+            skybox=skybox, 
+            point_lights=point_lights, 
+            directional_lights=directional_lights, 
+            spot_lights=spot_lights
+        )
+        
+        self.post_process_pass(ctx, fragment_shader)
+
 
     def tonemap_pass(self, ctx: RenderCtx):
         hdr_attachment: Sampler2D = Sampler2D(ctx.input_attachments[0])

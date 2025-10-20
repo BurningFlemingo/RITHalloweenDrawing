@@ -220,7 +220,7 @@ def calc_duvdxy(ctx: RasterCtx, attribs: Vec3, w1: int, w2: int) -> tuple[float,
 
     return (dudx, dudy, dvdx, dvdy)
 
-g_ddxy_is_enabled: bool = False
+g_ddxy_is_enabled: bool = True
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256

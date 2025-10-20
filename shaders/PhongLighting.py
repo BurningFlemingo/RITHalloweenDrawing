@@ -7,94 +7,31 @@ from AssetManager import *
 from Sampling import *
 from shaders.Lighting import *
 from Rasterizer import *
-
-
-class PhongVertexShader:
-    class Attributes(NamedTuple):
-        pos: Vec3
-        tex_uv: Vec2
-        
-        normal: Vec3
-        tangent: Vec3
-        bitangent: Vec3
-
-    class OutAttributes(NamedTuple):
-        pos: Vec3
-        tex_uv: Vec2
-        frag_light_space_pos: Vec4
-        
-        tbn_matrix: Mat4
-
-    def __init__(self, model_matrix: Mat4, normal_matrix: Mat4, view_matrix: Mat4, projection_matrix: Mat4, light_space_matrix: Mat4):
-        self.model_matrix = model_matrix
-        self.normal_matrix = normal_matrix
-        self.view_matrix = view_matrix
-        self.projection_matrix = projection_matrix
-        self.light_space_matrix = light_space_matrix
-
-    def __call__(self, in_attributes: Attributes) -> Vertex:
-        model_matrix: Mat4 = self.model_matrix
-        normal_matrix: Mat4 = self.normal_matrix
-        view_matrix: Mat4 = self.view_matrix
-        projection_matrix: Mat4 = self.projection_matrix
-        light_space_matrix: Mat4 = self.light_space_matrix
-
-        pos, tex_uv, normal, tangent, bitangent = in_attributes
-
-        world_pos: Vec4 = model_matrix * Vec4(*pos, 1.0)
-        view_pos: Vec4 = view_matrix * world_pos
-
-        model_view_matrix: Mat4 = view_matrix * normal_matrix
-        
-        T: Vec3 = normalize(model_view_matrix * Vec4(*tangent, 0.0))
-        B: Vec3 = normalize(model_view_matrix * Vec4(*bitangent, 0.0))
-        N: Vec3 = normalize(model_view_matrix * Vec4(*normal, 0.0))
-
-        tbn_matrix: Mat4 = Mat4(
-            Vec4(T.x, B.x, N.x, 0.0),
-            Vec4(T.y, B.y, N.y, 0.0),
-            Vec4(T.z, B.z, N.z, 0.0),
-            Vec4(0.0, 0.0, 0.0, 0.0),
-        )
-
-        frag_light_space_pos: Vec4 = light_space_matrix * world_pos
-
-        out_position = projection_matrix * view_pos
-        out_attributes = self.OutAttributes(
-            pos=view_pos.xyz, tex_uv=tex_uv, frag_light_space_pos=frag_light_space_pos, tbn_matrix=tbn_matrix)
-
-        return Vertex(pos=out_position, fragment_attributes=out_attributes)
+from Quad import *
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Sampler2D, skybox: Sampler3D):
-        self.material = material
+    def __init__(self, positions: Sampler2D, light_positions: Sampler2D, normals: Sampler2D, albedo: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight]):
+        self.positions = positions
+        self.light_positions = light_positions
+        self.normals = normals
+        self.albedo = albedo
+        self.shadow_map = shadow_map
+        self.skybox = skybox
         self.point_lights = point_lights
         self.directional_lights = directional_lights
         self.spot_lights = spot_lights
-        self.shadow_map = shadow_map
-        self.skybox = skybox
 
-    def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
-        material: Material = self.material
+
+    def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
+        uv: Vec2 = attributes.tex_uv
         shadow_map: Sampler2D = self.shadow_map
+        pos: Vec3 = self.positions.sample(*uv).xyz
+        frag_light_space_pos: Vec3 = self.positions.sample(*uv).xyz
+        normal: Vec3 = self.normals.sample(*uv).xyz
+        albedo: Vec4 = self.albedo.sample(*uv)
 
-        pos: Vec3 = attributes.pos
-        tex_uv: Vec2 = attributes.tex_uv
-        
-        tbn_matrix: Mat4 = attributes.tbn_matrix
-
-        frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
-        frag_light_space_pos /= frag_light_space_pos.w
-        current_depth: float = frag_light_space_pos.z
-
-        normal: Vec3 = material.normal_map.sample(*tex_uv).xyz
-        normal = (normal * 2) - 1
-        normal = (tbn_matrix * Vec4(*normal, 0.0)).xyz
-        normal = normalize(normal)
-        
         view_dir: Vec3 = normalize(pos * -1)
-
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
         skybox_frag_color: Vec3 = self.skybox.sample(reflected_view_dir).xyz * 5
 
@@ -107,6 +44,7 @@ class PhongFragmentShader:
         bias: float = max(
             max_bias * (1 - dot(normal, spot_light_dir)), min_bias)
 
+        current_depth: float = frag_light_space_pos.z
         shadow_scalar: float = 0.0
         for y in range(-1, 2):
             for x in range(-1, 2):
@@ -122,13 +60,13 @@ class PhongFragmentShader:
         frag_color: Vec3 = Vec3(0.0, 0.0, 0.0)
         for light in self.point_lights:
             frag_color += calc_point_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir)
+                light, pos, normal, albedo, view_dir)
         for light in self.directional_lights:
             frag_color += calc_directional_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir)
+                light, pos, normal, albedo, view_dir)
         for light in self.spot_lights:
             frag_color += calc_spot_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
+                light, pos, normal, albedo, view_dir, shadow_scalar)
         # frag_color += skybox_frag_color
         
         # rgb luma coefficients from the Rec. 709 Standard
