@@ -69,13 +69,13 @@ class Scene:
         shadow_pass.set_depth_attachment(shadow_map)
 
         geometry_pass = self.render_graph.make_pass(viewport, self.geometry_pass)
+        geometry_pass.set_depth_attachment(scene_depth_buffer)
         geometry_pass.add_color_output(position_texture)
         geometry_pass.add_color_output(light_position_texture)
         geometry_pass.add_color_output(normal_texture)
         geometry_pass.add_color_output(albedo_texture)
         
         light_pass = self.render_graph.make_pass(viewport, self.light_pass)
-        light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(position_texture)
         light_pass.add_input_attachment(light_position_texture)
         light_pass.add_input_attachment(normal_texture)

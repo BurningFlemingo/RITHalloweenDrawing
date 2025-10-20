@@ -79,7 +79,7 @@ class GeometryFragmentShader:
 
         specular: Vec3 = material.specular_color * material.specular_map.sample(*uv).xyz
         sharpness: float = specular.magnitude() * material.specular_sharpness
-        albedo: Vec4 = Vec4(material.diffuse_color * material.diffuse_map.sample(*uv).xyz, sharpness)
+        albedo: Vec3 = material.diffuse_color * material.diffuse_map.sample(*uv).xyz
 
         
         frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
@@ -90,4 +90,4 @@ class GeometryFragmentShader:
         normal = (tbn_matrix * Vec4(*normal, 0.0)).xyz
         normal = normalize(normal)
         
-        return [pos, frag_light_space_pos, Vec4(*normal, 1.0), albedo]
+        return [pos, frag_light_space_pos, Vec4(*normal, 1.0), Vec4(*albedo, sharpness)]
