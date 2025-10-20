@@ -20,7 +20,7 @@ class GeometryVertexShader:
 
     class OutAttributes(NamedTuple):
         pos: Vec3
-        frag_light_space_pos: Vec3
+        frag_light_space_pos: Vec4
         tex_uv: Vec2
         tbn_matrix: Mat4
 
@@ -60,13 +60,13 @@ class GeometryVertexShader:
 
         out_position = projection_matrix * view_pos
         out_attributes = self.OutAttributes(
-            pos=view_pos.xyz, frag_light_space_pos=frag_light_space_pos.xyz, tex_uv=tex_uv, tbn_matrix=tbn_matrix)
+            pos=view_pos.xyz, frag_light_space_pos=frag_light_space_pos, tex_uv=tex_uv, tbn_matrix=tbn_matrix)
 
         return Vertex(pos=out_position, fragment_attributes=out_attributes)
 
 
 class GeometryFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Sampler2D, skybox: Sampler3D):
+    def __init__(self, material: Material, skybox: Sampler3D):
         self.material = material
         self.skybox = skybox
 
@@ -77,9 +77,9 @@ class GeometryFragmentShader:
         
         material: Material = self.material
 
-        specular: Vec4 = Vec4(material.specular_color * material.specular_map.sample(*uv), 1.0)
+        specular: Vec3 = material.specular_color * material.specular_map.sample(*uv).xyz
         sharpness: float = specular.magnitude() * material.specular_sharpness
-        albedo: Vec4 = Vec4(material.diffuse_color * material.diffuse_map.sample(*uv), sharpness)
+        albedo: Vec4 = Vec4(material.diffuse_color * material.diffuse_map.sample(*uv).xyz, sharpness)
 
         
         frag_light_space_pos: Vec4 = attributes.frag_light_space_pos
@@ -90,4 +90,4 @@ class GeometryFragmentShader:
         normal = (tbn_matrix * Vec4(*normal, 0.0)).xyz
         normal = normalize(normal)
         
-        return [pos, frag_light_space_pos, Vec4(normal, 1.0), albedo]
+        return [pos, frag_light_space_pos, Vec4(*normal, 1.0), albedo]

@@ -6,8 +6,8 @@ from RenderTypes import *
 from AssetManager import *
 from Sampling import *
 from shaders.Lighting import *
+from shaders.Quad import *
 from Rasterizer import *
-from Quad import *
 
 
 class PhongFragmentShader:
@@ -26,7 +26,11 @@ class PhongFragmentShader:
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
         shadow_map: Sampler2D = self.shadow_map
-        pos: Vec3 = self.positions.sample(*uv).xyz
+        pos_and_stencil: Vec4 = self.positions.sample(*uv)
+        if (pos_and_stencil.w == 0):
+            return [Vec4(0, 0, 0, 1), Vec4(0, 0, 0, 1)]
+        
+        pos: Vec3 = pos_and_stencil.xyz
         frag_light_space_pos: Vec3 = self.positions.sample(*uv).xyz
         normal: Vec3 = self.normals.sample(*uv).xyz
         albedo: Vec4 = self.albedo.sample(*uv)
