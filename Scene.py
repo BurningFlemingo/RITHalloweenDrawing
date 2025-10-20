@@ -19,6 +19,7 @@ from shaders.Quad import *
 from shaders.GaussianBlur import *
 from shaders.Skybox import *
 from shaders.GeometryPass import *
+from shaders.FXAAPass import *
 
 
 @dataclass
@@ -82,7 +83,6 @@ class Scene:
         light_pass.add_input_attachment(albedo_texture)
         light_pass.add_input_attachment(shadow_map)
         light_pass.add_color_output(hdr_color_1)
-        light_pass.add_color_output(hdr_color_2)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
         # skybox_pass.add_color_output(msaa_hdr_color_1)
@@ -91,6 +91,10 @@ class Scene:
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
         tonemap_pass.add_input_attachment(hdr_color_1)
         tonemap_pass.add_color_output(backbuffer)
+
+        # fxaa_pass = self.render_graph.make_pass(viewport, self.fxaa_pass)
+        # fxaa_pass.add_input_attachment(hdr_color_1)
+        # fxaa_pass.add_color_output(hdr_color_2)
 
 
 
@@ -233,6 +237,14 @@ class Scene:
         self.post_process_pass(
             ctx,
             TonemapFragmentShader(hdr_attachment)
+        )
+
+    def fxaa_pass(self, ctx: RenderCtx):
+        hdr_attachment: Sampler2D = Sampler2D(ctx.input_attachments[0])
+
+        self.post_process_pass(
+            ctx,
+            FXAAFragmentShader(hdr_attachment)
         )
 
     def resolve_pass(self, ctx: RenderCtx):
