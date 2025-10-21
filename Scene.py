@@ -59,7 +59,7 @@ class Scene:
         shadow_map: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
         hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
-        hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        ldr_srgb_color: AttachmentHandle = self.render_graph.make_attachment(backbuffer_color_attachment_info)
         
         position_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
         light_position_texture: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
@@ -90,13 +90,11 @@ class Scene:
 
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass)
         tonemap_pass.add_input_attachment(hdr_color_1)
-        tonemap_pass.add_color_output(backbuffer)
+        tonemap_pass.add_color_output(ldr_srgb_color)
 
-        # fxaa_pass = self.render_graph.make_pass(viewport, self.fxaa_pass)
-        # fxaa_pass.add_input_attachment(hdr_color_1)
-        # fxaa_pass.add_color_output(hdr_color_2)
-
-
+        fxaa_pass = self.render_graph.make_pass(viewport, self.fxaa_pass)
+        fxaa_pass.add_input_attachment(ldr_srgb_color)
+        fxaa_pass.add_color_output(backbuffer)
 
         self.render_graph.compile()
 
