@@ -1,7 +1,6 @@
 from typing import NamedTuple
 from typing import Callable
-from enum import IntEnum, Enum
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from Buffer import *
 from Presentation import Viewport
@@ -239,7 +238,7 @@ def allocate_buffer(buf: Buffer) -> None:
     if (buf.format == Format.RGBA_UNORM or buf.format == Format.RGBA_SFLOAT):
         clear_value = Vec4(0.0, 0.0, 0.0, 0.0)
     else:
-        clear_value = float("inf")
+        clear_value = 1.0
 
     n_samples: int = buf.n_samples_per_axis ** 2
     data: list[Vec4 | float] = [clear_value for _ in range(

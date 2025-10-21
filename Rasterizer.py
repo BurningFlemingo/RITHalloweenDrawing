@@ -41,10 +41,11 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> tupl
     n_samples_per_axis: int = fb.n_samples_per_axis
     n_samples: int = n_samples_per_axis ** 2
 
-    assert fb.depth_attachment != None
-    
-    px_index: int = (v_px * fb.depth_attachment.width +
+    if (fb.depth_attachment is not None):
+        px_index: int = (v_px * fb.depth_attachment.width +
                      u_px) * n_samples
+    else: 
+        px_index: int = 0
 
     accumulated_w1: int = 0
     accumulated_w2: int = 0
@@ -71,7 +72,13 @@ def test_samples(ctx: RasterCtx, u_px: int, v_px: int, w1: int, w2: int) -> tupl
                 sample_index: int = v_sample * n_samples_per_axis + u_sample
                 depth_buffer_index: int = px_index + sample_index
 
-                if (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
+                if (fb.depth_attachment is None):
+                    samples_survived_indices.append(sample_index)
+
+                    accumulated_w1 += w1
+                    accumulated_w2 += w2
+                    
+                elif (interpolated_depth <= fb.depth_attachment.data[depth_buffer_index]):
                     fb.depth_attachment.data[depth_buffer_index] = interpolated_depth
                     samples_survived_indices.append(sample_index)
 
@@ -135,33 +142,21 @@ def patch_samplers(object: Any, dudx: float, dudy: float, dvdx: float, dvdy: flo
         patch_attribute(attribute, dudx, dudy, dvdx, dvdy)
 
 
-def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int, ddxy: Vec2) -> bool:
+def shade_pixel(ctx: RasterCtx, fragment_shader: FragmentShader, u_px: int, v_px: int, w1: int, w2: int) -> bool:
     fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias = ctx
 
-    n_samples: int = fb.n_samples_per_axis ** 2
-    n_w1: float = 0
-    n_w2: float = 0
-    if (fb.depth_attachment is None):
-        w1 += (w1_px_step.x + w1_px_step.y) / 2
-        w2 += (w2_px_step.x + w2_px_step.y) / 2
-        
-        n_w1 = w1 / det
-        n_w2 = w2 / det
-        
-        samples_survived_indices: list[int] = [i for i in range(0, n_samples)]
-    else:
-        samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
-            ctx, u_px, v_px, w1, w2)
-        
-        n_surviving_samples: int = len(samples_survived_indices)
-        if (n_surviving_samples == 0):
-            return False
 
-        n_w1 = accumulated_w1 / (n_surviving_samples * det)
-        n_w2 = accumulated_w2 / (n_surviving_samples * det)
-        
-    n_w3 = 1.0 - n_w1 - n_w2
+    samples_survived_indices, accumulated_w1, accumulated_w2 = test_samples(
+        ctx, u_px, v_px, w1, w2)
     
+    n_surviving_samples: int = len(samples_survived_indices)
+    if (n_surviving_samples == 0):
+        return False
+
+    n_w1: float = accumulated_w1 / (n_surviving_samples * det)
+    n_w2: float = accumulated_w2 / (n_surviving_samples * det)
+    n_w3 = 1.0 - n_w1 - n_w2
+
     if (len(fb.color_attachments) == 0):
         return False
     
@@ -220,7 +215,7 @@ def calc_duvdxy(ctx: RasterCtx, attribs: Vec3, w1: int, w2: int) -> tuple[float,
 
     return (dudx, dudy, dvdx, dvdy)
 
-g_ddxy_is_enabled: bool = False
+g_ddxy_is_enabled: bool = True
 
 def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Vertex, p2: Vertex, p3: Vertex) -> bool:
     n_subpx_per_axis: int = 256
@@ -274,7 +269,6 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
     ctx: RasterCtx = RasterCtx(
         fb, p1, p2, p3, det, w1_px_step, w2_px_step, w1_bias, w2_bias, w3_bias)
 
-    ddxy = Vec2()
     for v_px in range(min_y_px, max_y_px - 1, 2):
         row_w1: float = w1
         row_w2: float = w2
@@ -286,17 +280,17 @@ def rasterize_triangle(fb: Framebuffer, fragment_shader: FragmentShader, p1: Ver
                     dudx, dudy, dvdx, dvdy = calc_duvdxy(ctx, tex_uv_attribs, w1, w2)
                     patch_samplers(fragment_shader, dudx, dudy, dvdx, dvdy)
 
-            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2, ddxy)
+            shade_pixel(ctx, fragment_shader, u_px, v_px, w1, w2)
             
             pixels_shaded: int = 1
             if (u_px + 1 < max_x_px):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, w1 + w1_px_step.x, w2 + w2_px_step.x, ddxy)
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px, w1 + w1_px_step.x, w2 + w2_px_step.x)
                 pixels_shaded += 1
             if (v_px + 1 < max_y_px):
-                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, w1 + w1_px_step.y, w2 + w2_px_step.y, ddxy)
+                shade_pixel(ctx, fragment_shader, u_px, v_px + 1, w1 + w1_px_step.y, w2 + w2_px_step.y)
                 pixels_shaded += 1
             if (pixels_shaded == 3):
-                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y, ddxy)
+                shade_pixel(ctx, fragment_shader, u_px + 1, v_px + 1, w1 + w1_px_step.x + w1_px_step.y, w2 + w2_px_step.x + w2_px_step.y)
 
             w1 += w1_px_step.x * 2
             w2 += w2_px_step.x * 2

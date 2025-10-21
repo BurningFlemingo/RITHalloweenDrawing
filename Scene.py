@@ -72,7 +72,6 @@ class Scene:
         light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(shadow_map)
         light_pass.add_color_output(msaa_hdr_color_1)
-        light_pass.add_color_output(msaa_hdr_color_2)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
         # skybox_pass.add_color_output(msaa_hdr_color_1)
