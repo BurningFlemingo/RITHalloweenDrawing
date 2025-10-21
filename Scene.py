@@ -82,7 +82,7 @@ class Scene:
         light_pass.add_input_attachment(normal_texture)
         light_pass.add_input_attachment(albedo_texture)
         light_pass.add_input_attachment(shadow_map)
-        light_pass.add_color_output(hdr_color_1)
+        light_pass.add_color_output(msaa_hdr_color_1)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
         # skybox_pass.add_color_output(msaa_hdr_color_1)

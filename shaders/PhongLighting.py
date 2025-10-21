@@ -74,4 +74,10 @@ class PhongFragmentShader:
                 light, pos, normal, albedo, view_dir, shadow_scalar)
         # frag_color += skybox_frag_color
         
-        return [Vec4(*frag_color, 1)]
+        # rgb luma coefficients from the Rec. 709 Standard
+        # brightness: float = dot(frag_color, Vec3(0.2126, 0.7152, 0.0722))
+        # bloom_color: Vec3 = Vec3(0, 0, 0)
+        # if (brightness > 1.0):
+        #     bloom_color = frag_color
+            
+        return [Vec4(*frag_color, 1.0)]
