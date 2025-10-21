@@ -12,12 +12,14 @@ from Cubemap import *
 from Rendergraph import *
 
 
+from shaders.DepthPrePass import DepthPrePassVertexShader
 from shaders.PhongLighting import *
 from shaders.ShadowPass import *
 from shaders.ToneMapping import *
 from shaders.Quad import *
 from shaders.GaussianBlur import *
 from shaders.Skybox import *
+from shaders.DepthPrePass import *
 
 
 @dataclass
@@ -60,17 +62,22 @@ class Scene:
         
         shadow_map: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
+        pre_pass_scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         msaa_ldr_color: AttachmentHandle = self.render_graph.make_attachment(msaa_ldr_color_attachment_info)
         hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
+        depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass)
+        depth_pre_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
+        
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
 
         light_pass = self.render_graph.make_pass(viewport, self.light_pass)
         light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(shadow_map)
+        light_pass.add_input_attachment(pre_pass_scene_depth_buffer)
         light_pass.add_color_output(msaa_hdr_color_1)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
@@ -139,6 +146,27 @@ class Scene:
             cam.far_plane
         )
 
+    def depth_pre_pass(self, ctx: RenderCtx):
+         for (model, transform) in zip(self.models, self.model_transforms):
+            model_matrix: Mat4 = make_model_matrix(transform)
+
+            depth_pre_pass_vertex_shader = DepthPrePassVertexShader(
+                model_matrix=model_matrix,
+                view_matrix=self.view_matrix,
+                projection_matrix=self.projection_matrix,
+            )
+            for mesh in model:
+                vertex_buffer = {"pos": mesh.positions}
+
+                ctx.draw(
+                    vertex_buffer=vertex_buffer,
+                    vertex_shader=depth_pre_pass_vertex_shader,
+                    fragment_shader=None,
+                    vertex_count=mesh.num_vertices,
+                    vertex_offset=0
+                )
+       
+
     def shadow_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
             model_matrix: Mat4 = make_model_matrix(transform)
@@ -161,6 +189,7 @@ class Scene:
     def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
             shadow_map: Sampler2D = Sampler2D(ctx.input_attachments[0])
+            pre_pass_depth_buffer: Sampler2D = Sampler2D(ctx.input_attachments[1])
 
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
@@ -184,6 +213,7 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
+                    pre_pass_depth_buffer=pre_pass_depth_buffer,
                     shadow_map=shadow_map,
                     skybox=self.skybox
                 )

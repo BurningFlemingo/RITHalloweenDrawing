@@ -67,16 +67,18 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], shadow_map: Sampler2D, skybox: Sampler3D):
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], pre_pass_depth_buffer: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D):
         self.material = material
         self.point_lights = point_lights
         self.directional_lights = directional_lights
         self.spot_lights = spot_lights
+        self.pre_pass_depth_buffer = pre_pass_depth_buffer
         self.shadow_map = shadow_map
         self.skybox = skybox
 
     def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
         material: Material = self.material
+        prepass_depth_buffer: Sampler2D = self.pre_pass_depth_buffer
         shadow_map: Sampler2D = self.shadow_map
 
         pos: Vec3 = attributes.pos
@@ -136,5 +138,5 @@ class PhongFragmentShader:
         # bloom_color: Vec3 = Vec3(0, 0, 0)
         # if (brightness > 1.0):
         #     bloom_color = frag_color
-            
+        frag_color = prepass_depth_buffer.sample(*tex_uv).xyz
         return [Vec4(*frag_color, 1.0)]
