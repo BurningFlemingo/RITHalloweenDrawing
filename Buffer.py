@@ -29,7 +29,7 @@ class Buffer(NamedTuple):
     
     width: int
     height: int
-    n_samples_per_axis: int
+    n_samples_per_axis: int = 1
 
     format: Format
     color_space: ColorSpace = ColorSpace.NONE

@@ -129,10 +129,12 @@ class Scene:
             
             ssao_kernel.append(sample)
 
-        # ssao_noise: Buffer = Buffer()
-        # for _ in range(0, 16):
-        #     xy_rot: Vec4 = Vec4(random.random(), random.random(), 0.0, 1.0)
-        #     ssao_noise.data.append(xy_rot)
+        ssao_noise: Buffer = Buffer(
+            data=[], width=4, height=4, format=Format.RGBA_SFLOAT
+                )
+        for _ in range(0, 16):
+            xy_rot: Vec4 = Vec4(random.random(), random.random(), 0.0, 1.0)
+            ssao_noise.data.append(xy_rot)
         
 
     def add_model(self, path: str, transform: Transform):
