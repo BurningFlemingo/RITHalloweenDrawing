@@ -18,8 +18,7 @@ class SizeDimensions(NamedTuple):
 
 @dataclass
 class Sampler2D:
-    base: Buffer
-    mip_chain: list[Buffer] = field(default_factory=list)
+    buffers: list[Buffer] = field(default_factory=list)
 
     min_filtering_method: FilterMethod = FilterMethod.TRILINEAR
     mag_filtering_method: FilterMethod = FilterMethod.NEAREST
@@ -27,95 +26,137 @@ class Sampler2D:
     duvdx: Vec2 = Vec2()
     duvdy: Vec2 = Vec2()
 
+    anisotropic_filtering: bool = True
+    max_anisotropy: int = 16
+
     def get_size(self) -> SizeDimensions:
-        return SizeDimensions(self.base.width, self.base.height)
+        return SizeDimensions(self.buffers[0].width, self.buffers[0].height)
 
     def calc_lod(self):
         lod: float = 0
         
-        duvdx: Vec2 = self.duvdx * self.base.width
-        duvdy: Vec2 = self.duvdy * self.base.height
+        duvdx: Vec2 = self.duvdx * self.buffers[0].width
+        duvdy: Vec2 = self.duvdy * self.buffers[0].height
 
         if (duvdx.x != 0 and duvdx.y != 0 and duvdy.x != 0 and duvdy.y != 0):
-            normalized_duvdx: Vec2 = normalize(duvdx)
-            normalized_duvdy: Vec2 = normalize(duvdy)
-            if (normalized_duvdx != normalized_duvdy and dot(normalized_duvdx, normalized_duvdy) != 0):
-                # https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm#LODCalculation
-                A: float = duvdx.y ** 2 + duvdy.y ** 2
-                B: float = -2 * (duvdx.x * duvdx.y + duvdy.x * duvdy.y)
-                C: float = duvdx.x ** 2 + duvdy.x ** 2
-                F: float = (duvdx.x * duvdy.y - duvdy.x * duvdx.y) ** 2
-
-                p: float = A - C
-                q: float = A + C
-                t: float = math.sqrt(p ** 2 + B ** 2)
-
-                sgn_B: float = 1 if B >= 0 else -1
-
-                duvdx = Vec2(
-                    math.sqrt(F * (t+p) / (t * (q+t))), 
-                    math.sqrt(F * (t-p) / (t * (q+t))) * sgn_B
-                )
-
-                duvdy = Vec2(
-                    math.sqrt(F * (t-p) / (t * (q-t))) * -sgn_B, 
-                    math.sqrt(F * (t+p) / (t * (q-t)))
-                )
-        
             d: float = max(duvdx.magnitude(), duvdy.magnitude())
             
             lod_bias: float = -0.5
-            lod = max(min(math.log2(d) + lod_bias, len(self.mip_chain) - 1), 0)
+            lod = max(min(math.log2(d) + lod_bias, len(self.buffers) - 1), 0)
             
         return lod
-    
-    def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
-        lod: float = 0
-        if (len(self.mip_chain) != 0):
-            lod = self.calc_lod()
 
+    def sample_anisotropic(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
+        duvdx: Vec2 = self.duvdx * self.buffers[0].width
+        duvdy: Vec2 = self.duvdy * self.buffers[0].height
+        
+        duvdx_mag: float = duvdx.magnitude()
+        duvdy_mag: float = duvdy.magnitude()
+
+        if (duvdx_mag == 0 or duvdy_mag == 0):
+            return self.sample_isotropic(u, v, mode, border_color)
+
+        normalized_duvdx: Vec2 = duvdx / duvdx_mag
+        normalized_duvdy: Vec2 = duvdy / duvdy_mag
+
+        if (normalized_duvdx == normalized_duvdy):
+            return self.sample_isotropic(u, v, mode, border_color)
+            
+        if (dot(normalized_duvdx, normalized_duvdy) != 0):
+            # https://microsoft.github.io/DirectX-Specs/d3d/archive/D3D11_3_FunctionalSpec.htm#LODCalculation
+            A: float = duvdx.y ** 2 + duvdy.y ** 2
+            B: float = -2 * (duvdx.x * duvdx.y + duvdy.x * duvdy.y)
+            C: float = duvdx.x ** 2 + duvdy.x ** 2
+            F: float = (duvdx.x * duvdy.y - duvdy.x * duvdx.y) ** 2
+
+            p: float = A - C
+            q: float = A + C
+            t: float = math.sqrt(p ** 2 + B ** 2)
+
+            sgn_B: float = 1 if B >= 0 else -1
+
+            duvdx = Vec2(
+                math.sqrt(F * (t+p) / (t * (q+t))), 
+                math.sqrt(F * (t-p) / (t * (q+t))) * sgn_B
+            )
+
+            duvdy = Vec2(
+                math.sqrt(F * (t-p) / (t * (q-t))) * -sgn_B, 
+                math.sqrt(F * (t+p) / (t * (q-t)))
+            )
+
+        major_axis: Vec2 = duvdy if duvdy.magnitude() >= duvdx.magnitude() else duvdx
+        minor_axis: Vec2 = duvdx if duvdx != major_axis else duvdy
+        
+        major_axis_mag: float = major_axis.magnitude()
+        minor_axis_mag: float = minor_axis.magnitude()
+
+        ratio_of_anisotropy: float = major_axis_mag / minor_axis_mag
+        n_samples: int = min(round(ratio_of_anisotropy), self.max_anisotropy)
+        
+        if (n_samples <= 1):
+            return self.sample_isotropic(u, v, mode, border_color)
+        
+        if (mode == WrappingMode.NONE):
+            mode = WrappingMode.CLAMP
+
+        major_axis_uv: Vec2 = major_axis / Vec2(self.buffers[0].width, self.buffers[0].height)
+        major_axis_step: Vec2 = major_axis_uv / (n_samples - 1)
+
+        lod_bias: float = -0.5
+        lod = max(min(math.log2(minor_axis_mag) + lod_bias, len(self.buffers) - 1), 0)
+
+        uv: Vec2 = Vec2(u, v) - (major_axis_uv / 2)
+        accumulated_sample: Vec4 = Vec4(0, 0, 0, 0) 
+        for _ in range(0, n_samples): 
+            accumulated_sample += self.sample_isotropic(*uv, mode, border_color, lod)
+            uv += major_axis_step
+            
+        return accumulated_sample / n_samples
+
+    def sample_isotropic(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None, lod: float | None = None):
+        if (len(self.buffers) == 1):
+            lod = 0
+        elif (lod is None):
+            lod = self.calc_lod()
+            
         if (self.min_filtering_method == FilterMethod.TRILINEAR):
             lod_a: float = math.floor(lod)
             lod_b: float = math.ceil(lod)
             
-            if (lod_a <= 0):
-                buffer_a = self.base
-            else: 
-                buffer_a = self.mip_chain[lod_a - 1]
-
-            if (lod_b <= 0):
-                buffer_b = self.base
-            else: 
-                buffer_b = self.mip_chain[lod_b - 1]
+            buffer_a = self.buffers[lod_a]
+            buffer_b = self.buffers[lod_b]
             
-            a: Vec4 = sample2D(buffer_a, u, v, FilterMethod.BILINEAR, mode, border_color)
+            sample_a: Vec4 = sample2D(buffer_a, u, v, FilterMethod.BILINEAR, mode, border_color)
             
             if (lod_a == lod_b):
-                return a
+                return sample_a
             
-            b: Vec4 = sample2D(buffer_b, u, v, FilterMethod.BILINEAR, mode, border_color)
+            sample_b: Vec4 = sample2D(buffer_b, u, v, FilterMethod.BILINEAR, mode, border_color)
             
             t: float = (lod - lod_a) / (lod_b - lod_a)
-            return a + t * (b - a)
+            return sample_a + t * (sample_b - sample_a)
         
-        if (math.floor(lod) <= 0):
-            buffer = self.base
-        else: 
-            buffer = self.mip_chain[math.floor(lod) - 1]       
-            
+        buffer = self.buffers[math.floor(lod)]
         return sample2D(buffer, u, v, self.min_filtering_method, mode, border_color)
+
+    def sample(self, u: float, v: float, mode: WrappingMode = WrappingMode.NONE, border_color: Any | None = None):
+        if (self.anisotropic_filtering):
+            return self.sample_anisotropic(u, v, mode, border_color)
+        
+        return self.sample_isotropic(u, v, mode, border_color)
 
 
     def generate_mipmaps(self):
-        if (len(self.mip_chain) > 0):
+        if (len(self.buffers) > 1):
             return self
             
-        num_mip_levels: int = math.floor(math.log2(self.base.width))
-        num_mip_levels = min(num_mip_levels, math.floor(math.log2(self.base.height)))
+        num_mip_levels: int = math.floor(math.log2(self.buffers[0].width))
+        num_mip_levels = min(num_mip_levels, math.floor(math.log2(self.buffers[0].height)))
 
-        width: int = self.base.width
-        height: int = self.base.height
-        buffer: Buffer = self.base
+        width: int = self.buffers[0].width
+        height: int = self.buffers[0].height
+        buffer: Buffer = self.buffers[0]
         for _ in range(0, num_mip_levels):
             width = width // 2
             height = height // 2
@@ -123,7 +164,7 @@ class Sampler2D:
             new_mipmap: Buffer = self.generate_mipmap(buffer, width, height, self.min_filtering_method)
             
             buffer = new_mipmap
-            self.mip_chain.append(new_mipmap)
+            self.buffers.append(new_mipmap)
 
         return self
 

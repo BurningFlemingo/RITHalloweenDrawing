@@ -210,8 +210,8 @@ class Scene:
 
     def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
-            shadow_map: Sampler2D = Sampler2D(ctx.input_attachments[0])
-            pre_pass_depth_buffer: Sampler2D = Sampler2D(ctx.input_attachments[1])
+            shadow_map: Sampler2D = Sampler2D([ctx.input_attachments[0]])
+            pre_pass_depth_buffer: Sampler2D = Sampler2D([ctx.input_attachments[1]])
 
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
@@ -249,7 +249,7 @@ class Scene:
                 )
 
     def tonemap_pass(self, ctx: RenderCtx):
-        hdr_attachment: Sampler2D = Sampler2D(ctx.input_attachments[0])
+        hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
 
         self.post_process_pass(
             ctx,
