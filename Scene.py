@@ -1,5 +1,6 @@
 from typing import NamedTuple
 from dataclasses import dataclass
+import random
 
 from VectorMath import *
 from Presentation import *
@@ -112,6 +113,27 @@ class Scene:
 
         self.skybox = self.asset_manager.load_cubemap("assets\\cave\\")
         self.turtle_is_setup: bool = False
+
+        ssao_kernel: list[Vec3] = []
+        n_samples: int = 64
+        for i in range(0, n_samples):
+            sample = Vec3(
+                    random.random() * 2 - 1,
+                    random.random() * 2 - 1,
+                    random.random(),
+            )
+            sample = normalize(sample)
+            scale: float = i/n_samples
+            scale = 0.1 + (scale ** 2) * (0.9)
+            sample *= scale 
+            
+            ssao_kernel.append(sample)
+
+        # ssao_noise: Buffer = Buffer()
+        # for _ in range(0, 16):
+        #     xy_rot: Vec4 = Vec4(random.random(), random.random(), 0.0, 1.0)
+        #     ssao_noise.data.append(xy_rot)
+        
 
     def add_model(self, path: str, transform: Transform):
         self.models.append(self.asset_manager.load_model(path))

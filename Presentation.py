@@ -27,6 +27,7 @@ def setup_turtle(window_width: int, window_height: int) -> None:
 def present_backbuffer(backbuffer: Buffer, viewport: Viewport) -> None:
     pen_color: Vec3 = Vec3(0.0, 0.0, 0.0)
     turtle.pencolor(pen_color.x, pen_color.y, pen_color.z)
+    
     for y_px in range(0, viewport.height):
         turtle.up()
         turtle.goto(0, y_px)
@@ -35,7 +36,7 @@ def present_backbuffer(backbuffer: Buffer, viewport: Viewport) -> None:
         for x_px in range(0, viewport.width):
             px_index = y_px * backbuffer.width + x_px
 
-            px_color: Vec3 = Vec3(*backbuffer.data[px_index][:3])
+            px_color: Vec3 = backbuffer.data[px_index].xyz
             color_changed: bool = px_color != pen_color
 
             if (color_changed):

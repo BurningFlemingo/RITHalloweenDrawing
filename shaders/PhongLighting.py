@@ -138,5 +138,4 @@ class PhongFragmentShader:
         # bloom_color: Vec3 = Vec3(0, 0, 0)
         # if (brightness > 1.0):
         #     bloom_color = frag_color
-        frag_color = prepass_depth_buffer.sample(*tex_uv).xyz
         return [Vec4(*frag_color, 1.0)]
