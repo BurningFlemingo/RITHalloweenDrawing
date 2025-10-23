@@ -7,6 +7,7 @@ from Presentation import Viewport
 from Rasterizer import FragmentShader
 from Renderer import *
 from VectorMath import *
+from Cubemap import *
 
 
 class RenderCtx(NamedTuple):
@@ -37,11 +38,12 @@ class AttachmentInfo:
     color_space: ColorSpace = ColorSpace.LINEAR
 
     is_transient: bool = True
+    is_cubemap: bool = False
 
 
 @dataclass
 class Attachment:
-    buffer: Buffer
+    image: Buffer | Cubemap
     size_mode: SizeMode
     
     is_transient: bool
@@ -102,22 +104,36 @@ class RenderGraph:
         if (info.format == Format.D_UNORM or info.format == Format.D_SFLOAT):
             attachment_type = AttachmentType.DEPTH
 
-        handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
-        buffer: Buffer = Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space)
-        attachment = Attachment(buffer=buffer, size_mode=info.size_mode, is_transient=info.is_transient, is_allocated=False)
+        handle = AttachmentHandle(uid=index, type=attachment_type, is_cubemap=info.is_cubemap, debug_name=debug_name)
+        image: Buffer | Cubemap | None = None
+        if (info.is_cubemap):
+            buffers: list[Buffer] = []
+            for _ in range(0, 6):
+                buffer: Buffer = Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space)
+                buffers.append(buffer)
+            image = Cubemap(buffers)
+        else:
+            image = Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space)
+            
+        attachment = Attachment(image=image, size_mode=info.size_mode, is_transient=info.is_transient, is_allocated=False)
         
         self.attachments.append(attachment)
         
         return handle
 
-    def import_attachment(self, buffer: Buffer, debug_name: str ="") -> AttachmentHandle:
+    def import_attachment(self, image: Buffer | Cubemap, debug_name: str ="") -> AttachmentHandle:
+        if (isinstance(image, Cubemap)):
+            format: Format = image.faces[0].format
+        else: 
+            format: Format = image.format
+            
         index: int = len(self.attachments)
         attachment_type: AttachmentType = AttachmentType.COLOR
-        if (buffer.format == Format.D_UNORM or buffer.format == Format.D_SFLOAT):
+        if (format == Format.D_UNORM or format == Format.D_SFLOAT):
             attachment_type = AttachmentType.DEPTH
             
         handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
-        attachment = Attachment(buffer=buffer, size_mode=SizeMode.ABSOLUTE, is_transient=True, is_allocated=True)
+        attachment = Attachment(image=image, size_mode=SizeMode.ABSOLUTE, is_transient=True, is_allocated=True)
             
         self.attachments.append(attachment)
 

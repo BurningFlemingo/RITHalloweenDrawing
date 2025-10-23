@@ -48,11 +48,13 @@ def agx_sigmoid_contrast_approx(x: Vec3):
          + 0.002857
 
 def color_correction(val: Vec3) -> Vec3:
+    # ASC CDL 
+    
     # normal
     offset: Vec3 = Vec3(0.0, 0.0, 0.0);
     slope: Vec3 = Vec3(1.0, 1.0, 1.0);
-    # power: Vec3 = Vec3(1.0, 1.0, 1.0);
-    # sat: float = 1.0;
+    power: Vec3 = Vec3(1.0, 1.0, 1.0);
+    sat: float = 1.0;
 
     # golden
     # slope = Vec3(1.0, 0.9, 0.5);
@@ -60,8 +62,8 @@ def color_correction(val: Vec3) -> Vec3:
     # sat = 0.8;
 
     # punchy
-    power: Vec3 = Vec3(1.35, 1.35, 1.35);
-    sat: float = 1.4
+    # power: Vec3 = Vec3(1.35, 1.35, 1.35);
+    # sat: float = 1.4
     
     val = val * slope + offset
     val = Vec3(
@@ -72,9 +74,9 @@ def color_correction(val: Vec3) -> Vec3:
 
     # rgb luma coefficients from the Rec. 709 Standard
     rec_709_primaries: Vec3 = Vec3(0.2126, 0.7152, 0.0722)
-    luma: float = dot(val, rec_709_primaries)
+    luminance: float = dot(val, rec_709_primaries)
 
-    return (sat * (val - luma)) + luma
+    return (sat * (val - luminance)) + luminance
 
     
 def agx(val: Vec3) -> Vec3:
@@ -93,15 +95,11 @@ def agx(val: Vec3) -> Vec3:
     )
 
 
-    # from https://github.com/MrLixm/AgXc/blob/main/python/AgXLib/apply.py
-    min_ev: float = -10.0
-    max_ev: float = 6.5 
+    # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
+    min_ev: float = -12.47393
+    max_ev: float = 4.026069
     
     two_exp_min_ev: float = 2 ** min_ev 
-    
-    # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
-    # min_ev: float = -12.47393
-    # max_ev: float = 4.026069
     
     val = (agx_inset * Vec4(*val, 1.0)).xyz
     val = Vec3(
@@ -129,12 +127,16 @@ def agx(val: Vec3) -> Vec3:
 
 
 class TonemapFragmentShader:
-    def __init__(self, color_attachment: Sampler2D):
+    def __init__(self, color_attachment: Sampler2D, average_scene_luminance: float = 5/7):
         self.color_attachment = color_attachment
+        key: float = 0.183 # middle gray
+        self.exposure_value = key / average_scene_luminance
         
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
         linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
+        linear_color *= 2 ** self.exposure_value
+
         mapped_color: Vec3 = agx(linear_color)
 
         gamma: float = 2.2

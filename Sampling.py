@@ -186,7 +186,6 @@ class Sampler2D:
         return mipmap
 
 
-
 @dataclass
 class Sampler3D:
     cubemap: Cubemap
