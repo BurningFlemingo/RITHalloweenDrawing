@@ -51,8 +51,8 @@ def color_correction(val: Vec3) -> Vec3:
     # normal
     offset: Vec3 = Vec3(0.0, 0.0, 0.0);
     slope: Vec3 = Vec3(1.0, 1.0, 1.0);
-    power: Vec3 = Vec3(1.0, 1.0, 1.0);
-    sat: float = 1.0;
+    # power: Vec3 = Vec3(1.0, 1.0, 1.0);
+    # sat: float = 1.0;
 
     # golden
     # slope = Vec3(1.0, 0.9, 0.5);
@@ -60,8 +60,8 @@ def color_correction(val: Vec3) -> Vec3:
     # sat = 0.8;
 
     # punchy
-    # power = Vec3(1.35, 1.35, 1.35);
-    # sat = 1.4
+    power: Vec3 = Vec3(1.35, 1.35, 1.35);
+    sat: float = 1.4
     
     val = val * slope + offset
     val = Vec3(
@@ -120,6 +120,11 @@ def agx(val: Vec3) -> Vec3:
     val = color_correction(val)
 
     val = (agx_outset * Vec4(*val, 1.0)).xyz
+    val = Vec3(
+        min(max(val.x, 0), 1), 
+        min(max(val.y, 0), 1), 
+        min(max(val.z, 0), 1), 
+    )
     return val
 
 
