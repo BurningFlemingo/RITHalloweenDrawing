@@ -16,6 +16,10 @@ class Vec4:
     def xyz(self):
         return Vec3(self.x, self.y, self.z)
 
+    @property
+    def xy(self):
+        return Vec2(self.x, self.y)
+
     def __add__(self, other):
         if type(other) is not type(self):
             return Vec4(self.x + other, self.y + other, self.z + other, self.w + other)

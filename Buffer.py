@@ -29,10 +29,11 @@ class Buffer(NamedTuple):
     
     width: int
     height: int
-    n_samples_per_axis: int = 1
 
     format: Format
     color_space: ColorSpace = ColorSpace.NONE
+    
+    n_samples_per_axis: int = 1
     
     def write_samples(self, x: int, y: int, val: Any, sample_indices: list[int]):
         val = transfer_format(val, Format.RGBA_SFLOAT, self.format)

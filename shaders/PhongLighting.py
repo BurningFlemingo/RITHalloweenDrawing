@@ -67,18 +67,19 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], pre_pass_depth_buffer: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D):
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], occlusion_map: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D, projection_matrix: Mat4):
         self.material = material
         self.point_lights = point_lights
         self.directional_lights = directional_lights
         self.spot_lights = spot_lights
-        self.pre_pass_depth_buffer = pre_pass_depth_buffer
+        self.occlusion_map = occlusion_map
         self.shadow_map = shadow_map
         self.skybox = skybox
+        self.projection_matrix = projection_matrix
 
     def __call__(self, attributes: PhongVertexShader.OutAttributes) -> list[Vec4]:
         material: Material = self.material
-        prepass_depth_buffer: Sampler2D = self.pre_pass_depth_buffer
+        occlusion_map: Sampler2D = self.occlusion_map
         shadow_map: Sampler2D = self.shadow_map
 
         pos: Vec3 = attributes.pos
@@ -99,6 +100,12 @@ class PhongFragmentShader:
 
         reflected_view_dir: Vec3 = reflect(view_dir, normal)
         skybox_frag_color: Vec3 = self.skybox.sample(reflected_view_dir).xyz * 5
+
+        projection_matrix: Mat4 = self.projection_matrix 
+        occlusion_ndc: Vec4 = projection_matrix * Vec4(*pos, 1.0)
+        occlusion_ndc /= occlusion_ndc.w
+        occlusion_uv: Vec2 = (occlusion_ndc.xy / 2) + 0.5
+        occlusion: float = occlusion_map.sample(*occlusion_uv).x
 
         shadow_map_uv: Vec2 = Vec2(
             (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
@@ -130,7 +137,7 @@ class PhongFragmentShader:
                 light, pos, normal, tex_uv, material, view_dir)
         for light in self.spot_lights:
             frag_color += calc_spot_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir, shadow_scalar)
+                light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
         # frag_color += skybox_frag_color
         
         # rgb luma coefficients from the Rec. 709 Standard

@@ -21,6 +21,7 @@ from shaders.Quad import *
 from shaders.GaussianBlur import *
 from shaders.Skybox import *
 from shaders.DepthPrePass import *
+from shaders.SSAOPass import *
 
 
 @dataclass
@@ -71,6 +72,11 @@ class Scene:
 
         depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass)
         depth_pre_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
+
+        ssao_pass = self.render_graph.make_pass(viewport, self.ssao_pass)
+        ssao_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
+        ssao_pass.add_input_attachment(pre_pass_scene_depth_buffer)
+        ssao_pass.add_color_output(hdr_color)
         
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
@@ -78,7 +84,7 @@ class Scene:
         light_pass = self.render_graph.make_pass(viewport, self.light_pass)
         light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(shadow_map)
-        light_pass.add_input_attachment(pre_pass_scene_depth_buffer)
+        light_pass.add_input_attachment(hdr_color)
         light_pass.add_color_output(msaa_hdr_color_1)
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass)
@@ -114,12 +120,12 @@ class Scene:
         self.skybox = self.asset_manager.load_cubemap("assets\\cave\\")
         self.turtle_is_setup: bool = False
 
-        ssao_kernel: list[Vec3] = []
-        n_samples: int = 64
+        self.ssao_kernel: list[Vec3] = []
+        n_samples: int = 16
         for i in range(0, n_samples):
             sample = Vec3(
-                    random.random() * 2 - 1,
-                    random.random() * 2 - 1,
+                    (random.random() * 2) - 1,
+                    (random.random() * 2) - 1,
                     random.random(),
             )
             sample = normalize(sample)
@@ -127,14 +133,14 @@ class Scene:
             scale = 0.1 + (scale ** 2) * (0.9)
             sample *= scale 
             
-            ssao_kernel.append(sample)
+            self.ssao_kernel.append(sample)
 
-        ssao_noise: Buffer = Buffer(
+        self.ssao_noise: Buffer = Buffer(
             data=[], width=4, height=4, format=Format.RGBA_SFLOAT
                 )
         for _ in range(0, 16):
-            xy_rot: Vec4 = Vec4(random.random(), random.random(), 0.0, 1.0)
-            ssao_noise.data.append(xy_rot)
+            xy_rot: Vec4 = Vec4((random.random() * 2) - 1, (random.random() * 2) - 1, 0.0, 1.0)
+            self.ssao_noise.data.append(xy_rot)
         
 
     def add_model(self, path: str, transform: Transform):
@@ -189,6 +195,40 @@ class Scene:
                     vertex_count=mesh.num_vertices,
                     vertex_offset=0
                 )
+
+    def ssao_pass(self, ctx: RenderCtx):
+        for (model, transform) in zip(self.models, self.model_transforms):
+            pre_pass_depth_buffer: Sampler2D = Sampler2D([ctx.input_attachments[0]])
+
+            model_matrix: Mat4 = make_model_matrix(transform)
+            normal_matrix: Mat4 = make_normal_matrix(model_matrix)
+
+            vertex_shader = SSAOVertexShader(
+                model_matrix=model_matrix,
+                normal_matrix=normal_matrix,
+                view_matrix=self.view_matrix,
+                projection_matrix=self.projection_matrix
+            )
+            for mesh in model:
+                vertex_buffer = {
+                    "pos": mesh.positions, "tex_uv": mesh.tex_uvs,
+                    "normal": mesh.normals, "tangent": mesh.tangents,
+                    "bitangent": mesh.bitangents
+                }
+
+                fragment_shader = SSAOFragmentShader(
+                    projection_matrix=self.projection_matrix,
+                    normal_map=mesh.material.normal_map, pre_pass_depth_buffer=pre_pass_depth_buffer,
+                    kernel=self.ssao_kernel, noise=Sampler2D([self.ssao_noise])
+                )
+
+                ctx.draw(
+                    vertex_buffer=vertex_buffer,
+                    vertex_shader=vertex_shader,
+                    fragment_shader=fragment_shader,
+                    vertex_count=mesh.num_vertices,
+                    vertex_offset=0
+                )
        
 
     def shadow_pass(self, ctx: RenderCtx):
@@ -213,7 +253,7 @@ class Scene:
     def light_pass(self, ctx: RenderCtx):
         for (model, transform) in zip(self.models, self.model_transforms):
             shadow_map: Sampler2D = Sampler2D([ctx.input_attachments[0]])
-            pre_pass_depth_buffer: Sampler2D = Sampler2D([ctx.input_attachments[1]])
+            occlusion_map: Sampler2D = Sampler2D([ctx.input_attachments[1]])
 
             model_matrix: Mat4 = make_model_matrix(transform)
             normal_matrix: Mat4 = make_normal_matrix(model_matrix)
@@ -237,9 +277,10 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
-                    pre_pass_depth_buffer=pre_pass_depth_buffer,
+                    occlusion_map=occlusion_map,
                     shadow_map=shadow_map,
-                    skybox=self.skybox
+                    skybox=self.skybox, 
+                    projection_matrix=self.projection_matrix
                 )
 
                 ctx.draw(

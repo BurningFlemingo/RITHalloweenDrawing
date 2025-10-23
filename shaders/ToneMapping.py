@@ -17,7 +17,6 @@ class TonemapFragmentShader:
         d: float = 0.20
         e: float = 0.02
         f: float = 0.30
-        w: float = 11.2
         
         # bloom_color: Vec3 = Vec3(*self.bloom_attachment.sampleUV(*attributes.uv)[:3])
         hdr_color: Vec3 = self.color_attachment.sample(*attributes.tex_uv).xyz

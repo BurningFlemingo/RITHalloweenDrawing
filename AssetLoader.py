@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class MaterialAsset:
-    ambient_color: Vec3 = Vec3(0.2, 0.2, 0.2)
+    ambient_color: Vec3 = Vec3(0.1, 0.1, 0.1)
     diffuse_color: Vec3 = Vec3(1.0, 1.0, 1.0)
     specular_color: Vec3 = Vec3(0.5, 0.5, 0.5)
 
