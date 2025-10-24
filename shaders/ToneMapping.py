@@ -98,7 +98,6 @@ def agx(val: Vec3) -> Vec3:
     # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
     # min_ev: float = -12.47393
     # max_ev: float = 4.026069
-    # white_point: float = 16.2917
     white_point: float = 16.2917
     black_point: float = 0.00017578
     
@@ -136,9 +135,8 @@ class TonemapFragmentShader:
     def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, key: float):
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
-        real_key: float = 1.03 - 2 /(math.log10(neutral_scene_luminance + 1) + 2)
-        self.exposure = real_key / neutral_scene_luminance
-        print("exposure:", self.exposure, "key:", real_key)
+        self.exposure = key / (neutral_scene_luminance * 2)
+        print("exposure:", self.exposure, "key:", key)
         
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
@@ -146,6 +144,5 @@ class TonemapFragmentShader:
         linear_color *= self.exposure 
 
         mapped_color: Vec3 = agx(linear_color)
-        # mapped_color: Vec3 = linear_color / (linear_color + 1)
 
         return [Vec4(*mapped_color, 1.0)]

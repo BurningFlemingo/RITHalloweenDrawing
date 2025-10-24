@@ -24,11 +24,8 @@ def main() -> None:
     scene.add_light(SpotLight(
         pos=cube_transform.pos, dir=[-1.0, 0.0, 1.0],
         inner_cutoff_angle=10.0, outer_cutoff_angle=60.0,
-        color=[1.0, 0.3, 1], intensity=10)
+        color=[1.0, 1.0, 1], intensity=10)
     )
-    scene.add_light(DirectionalLight(
-        dir=Vec3(1, -1, 1), intensity=5, color=Vec3(1.0, 1.0, 1.0)
-        ))
     scene.add_model("assets\\cube\\Cube.obj", cube_transform)
 
     scene.render()

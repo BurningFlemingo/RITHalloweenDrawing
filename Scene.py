@@ -301,11 +301,9 @@ class Scene:
 
         epsilon: float = 0.000001
 
-        max_luminance: float = 0
-        min_luminance: float = 0
-                
-        acc: float = 0
-        n: int = 0
+        exposure_values: list[float] = []
+        min_ev: float = float("inf")
+        max_ev: float = float("-inf")
         for y_px in range(0, height):
             for x_px in range(0, width):
                 index: int = y_px * width + x_px
@@ -318,19 +316,39 @@ class Scene:
                 if (stencil == 0):
                     continue
                 
-                acc += math.log2(max(luminance, epsilon))
-                max_luminance = max(max_luminance, luminance)
-                min_luminance = min(min_luminance, luminance)
-                
-                n += 1
+                ev: float = math.log2(max(luminance, epsilon))
+                exposure_values.append(ev)
+                min_ev = min(min_ev, ev)
+                max_ev = max(max_ev, ev)
 
-        neutral_luminance: float = math.exp2(acc / n)
+        n_bins: int = 64
+        bins: list[int] = [0 for _ in range(0, n_bins)]
+        largest_bin_index: int = 0
+        for ev in exposure_values: 
+            t: float = (ev - min_ev) / (max_ev - min_ev)
+            index: int = round(t * (n_bins - 1))
+            bins[index] += 1
+            if (bins[index] > bins[largest_bin_index]):
+                largest_bin_index = index
 
-        dynamic_range: float = math.log2(max_luminance/(max(min_luminance, epsilon)))
+        # change to removing percentile bins top and bottom
+        for i in range(0, n_bins):
+            t: float = (i + 0.5) / n_bins           
+            ev: float = min_ev + t * (max_ev - min_ev)
+            print(f"bins[{i}]={bins[i]} : ev = {ev})")
+        bins[0] = 0
+        bins[n_bins - 1] = 0
         
-        print(dynamic_range)
-        print(neutral_luminance, acc, n)
+        acc: float = 0
+        kernel_size: int = 5
+        for i in range(-math.floor(kernel_size/2), math.ceil(kernel_size/2)):
+            i = max(min(largest_bin_index + i, n_bins - 1), 0)
+            t: float = (i + 0.5) / n_bins
+            acc += min_ev + t * (max_ev - min_ev)
 
+        neutral_luminance: float = math.exp2(acc/kernel_size)
+            
+            
         key: float = 0.183 # middle gray
         return (neutral_luminance, key)
 
