@@ -291,7 +291,7 @@ class Scene:
                     vertex_offset=0
                 )
 
-    def calc_neutral_luminance(self, hdr_attachment: Sampler2D) -> tuple[float, float]:
+    def calc_neutral_luminance(self, hdr_attachment: Sampler2D) -> tuple[float, float, float]:
         assert hdr_attachment.buffers[0].n_samples_per_axis == 1
         
         rec_709_primaries: Vec3 = Vec3(0.2126, 0.7152, 0.0722)
@@ -323,43 +323,31 @@ class Scene:
 
         n_bins: int = 64
         bins: list[int] = [0 for _ in range(0, n_bins)]
-        largest_bin_index: int = 0
         for ev in exposure_values: 
             t: float = (ev - min_ev) / (max_ev - min_ev)
             index: int = round(t * (n_bins - 1))
             bins[index] += 1
-            if (bins[index] > bins[largest_bin_index]):
-                largest_bin_index = index
 
-        # change to removing percentile bins top and bottom
-        for i in range(0, n_bins):
+        start: int = int(n_bins * 0.70)
+        end: int = int(n_bins * 0.98)
+        acc: float = 0
+        for i in range(start, end):
             t: float = (i + 0.5) / n_bins           
             ev: float = min_ev + t * (max_ev - min_ev)
-            print(f"bins[{i}]={bins[i]} : ev = {ev})")
-        bins[0] = 0
-        bins[n_bins - 1] = 0
-        
-        acc: float = 0
-        kernel_size: int = 5
-        for i in range(-math.floor(kernel_size/2), math.ceil(kernel_size/2)):
-            i = max(min(largest_bin_index + i, n_bins - 1), 0)
-            t: float = (i + 0.5) / n_bins
-            acc += min_ev + t * (max_ev - min_ev)
-
-        neutral_luminance: float = math.exp2(acc/kernel_size)
+            acc += ev
             
+        neutral_luminance: float = math.exp2(acc/(end-start))
             
-        key: float = 0.183 # middle gray
-        return (neutral_luminance, key)
+        return (neutral_luminance, min_ev, max_ev)
 
 
     def tonemap_pass(self, ctx: RenderCtx):
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
-        neutral_luminance, key = self.calc_neutral_luminance(hdr_attachment)
+        neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, key)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, min_ev, max_ev)
         )
 
     def resolve_pass(self, ctx: RenderCtx):

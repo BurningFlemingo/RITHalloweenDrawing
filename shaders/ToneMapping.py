@@ -79,7 +79,8 @@ def color_correction(val: Vec3) -> Vec3:
     return (sat * (val - luminance)) + luminance
 
     
-def agx(val: Vec3) -> Vec3:
+# from https://iolite-engine.com/blog_posts/minimal_agx_implementation
+def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
     agx_inset: Mat4 = Mat4(
         Vec4(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0),
         Vec4(0.0784335999999992,  0.878468636469772,  0.0784336, 0.0),
@@ -94,15 +95,6 @@ def agx(val: Vec3) -> Vec3:
         Vec4(0.0, 0.0, 0.0, 1.0)
     )
 
-
-    # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
-    # min_ev: float = -12.47393
-    # max_ev: float = 4.026069
-    white_point: float = 16.2917
-    black_point: float = 0.00017578
-    
-    min_ev: float = math.log2(black_point)
-    max_ev: float = math.log2(white_point)
     
     two_exp_min_ev: float = 2 ** min_ev 
     
@@ -132,17 +124,29 @@ def agx(val: Vec3) -> Vec3:
 
 
 class TonemapFragmentShader:
-    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, key: float):
+    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, min_ev: float, max_ev: float):
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
-        self.exposure = key / (neutral_scene_luminance * 2)
+        
+        self.min_ev = min_ev + 0.02 * (max_ev - min_ev)
+        self.max_ev = min_ev + 0.98 * (max_ev - min_ev)
+        
+        key: float = (1.03 - 2/(math.log10(neutral_scene_luminance + 1) + 2)) / 2
+        
+        self.exposure = 0.18 / (neutral_scene_luminance)
+
+        if (self.exposure > 1):
+            self.max_ev += math.log2(self.exposure)
+        elif(self.exposure < 1 and self.exposure > 0):
+            self.min_ev += math.log2(self.exposure)
+            
         print("exposure:", self.exposure, "key:", key)
         
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
         linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
-        linear_color *= self.exposure 
+        linear_color *= self.exposure
 
-        mapped_color: Vec3 = agx(linear_color)
+        mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev)
 
         return [Vec4(*mapped_color, 1.0)]
