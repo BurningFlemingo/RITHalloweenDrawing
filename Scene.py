@@ -291,12 +291,57 @@ class Scene:
                     vertex_offset=0
                 )
 
+    def calc_neutral_luminance(self, hdr_attachment: Sampler2D) -> tuple[float, float]:
+        assert hdr_attachment.buffers[0].n_samples_per_axis == 1
+        
+        rec_709_primaries: Vec3 = Vec3(0.2126, 0.7152, 0.0722)
+        
+        height: int = hdr_attachment.buffers[0].height
+        width: int = hdr_attachment.buffers[0].width
+
+        epsilon: float = 0.000001
+
+        max_luminance: float = 0
+        min_luminance: float = 0
+                
+        acc: float = 0
+        n: int = 0
+        for y_px in range(0, height):
+            for x_px in range(0, width):
+                index: int = y_px * width + x_px
+                color_and_stencil: Vec4 = hdr_attachment.buffers[0].data[index]
+                stencil: float = color_and_stencil.w
+
+                color: Vec3 = color_and_stencil.xyz
+                luminance: float = dot(color, rec_709_primaries)
+
+                if (stencil == 0):
+                    continue
+                
+                acc += math.log2(max(luminance, epsilon))
+                max_luminance = max(max_luminance, luminance)
+                min_luminance = min(min_luminance, luminance)
+                
+                n += 1
+
+        neutral_luminance: float = math.exp2(acc / n)
+
+        dynamic_range: float = math.log2(max_luminance/(max(min_luminance, epsilon)))
+        
+        print(dynamic_range)
+        print(neutral_luminance, acc, n)
+
+        key: float = 0.183 # middle gray
+        return (neutral_luminance, key)
+
+
     def tonemap_pass(self, ctx: RenderCtx):
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
+        neutral_luminance, key = self.calc_neutral_luminance(hdr_attachment)
 
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, key)
         )
 
     def resolve_pass(self, ctx: RenderCtx):
