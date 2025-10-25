@@ -25,7 +25,7 @@
 #
 # https://iolite-engine.com/blog_posts/minimal_agx_implementation
 
-from math import exp2
+import math
 from typing import NamedTuple
 
 from VectorMath import *
@@ -128,21 +128,19 @@ class TonemapFragmentShader:
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
 
-        middle_gray: float = exp2(min_ev + 0.5 * (max_ev - min_ev))
-        key: float = middle_gray * math.exp2(exposure_compensation)
+        self.pivot = math.exp2(min_ev + 0.5 * (max_ev - min_ev))
+
+        key: float = self.pivot * math.exp2(exposure_compensation)
         self.exposure = key / (neutral_scene_luminance)
-        ev: float = math.log2(self.exposure)
 
-        self.max_ev = max_ev
-        self.min_ev = min_ev
-
-        print("mid gray:", middle_gray, "key:", key, "exposure:", self.exposure, "min_ev:", self.min_ev, "max_ev:", self.max_ev)
+        self.max_ev = max_ev + 2 ** self.pivot
+        self.min_ev = min_ev + 2 ** self.pivot
 
 
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
-        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
-        linear_color *= self.exposure
+        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz * self.exposure
+        linear_color = (linear_color - self.pivot) * self.exposure + self.pivot
 
         mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev)
 

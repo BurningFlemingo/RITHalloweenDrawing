@@ -64,17 +64,17 @@ class Scene:
         
         shadow_map: AttachmentHandle = self.render_graph.make_attachment(depth_attachment_info)
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
-        pre_pass_scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
+        # pre_pass_scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
         hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
-        depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass)
-        depth_pre_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
+        # depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass)
+        # depth_pre_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
 
-        ssao_pass = self.render_graph.make_pass(viewport, self.ssao_pass)
-        ssao_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
-        ssao_pass.add_input_attachment(pre_pass_scene_depth_buffer)
-        ssao_pass.add_color_output(hdr_color)
+        # ssao_pass = self.render_graph.make_pass(viewport, self.ssao_pass)
+        # ssao_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
+        # ssao_pass.add_input_attachment(pre_pass_scene_depth_buffer)
+        # ssao_pass.add_color_output(hdr_color)
         
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass)
         shadow_pass.set_depth_attachment(shadow_map)
@@ -297,7 +297,7 @@ class Scene:
         height: int = hdr_attachment.buffers[0].height
         width: int = hdr_attachment.buffers[0].width
 
-        epsilon: float = 0.000001
+        epsilon: float = 0.0001
 
         exposure_values: list[float] = []
         min_ev: float = float("inf")
@@ -326,22 +326,23 @@ class Scene:
             index: int = round(t * (n_bins - 1))
             bins[index] += 1
 
-        start: int = int(n_bins * 0.0)
-        end: int = int(n_bins * 1.0)
+        start: int = int(n_bins * 0.70)
+        end: int = int(n_bins * 0.90)
         acc: float = 0
         n_samples: int = 0
         for i in range(start, end):
             n_samples += bins[i]
             t: float = (i + 0.5) / n_bins
             ev: float = min_ev + t * (max_ev - min_ev)
-            acc += ev
+            acc += ev * bins[i]
             
-        neutral_luminance: float = math.exp2(acc/n_samples)
+        neutral_ev: float = acc/n_samples
+        neutral_luminance: float = math.exp2(neutral_ev)
         
-        # to be tweaked 
-        min_tonal_ev: float = min_ev
-        max_tonal_ev: float = min_ev
-        
+        padding: float = 2
+        min_tonal_ev: float = (min_ev + 0.01 * (max_ev - min_ev)) - padding
+        max_tonal_ev: float = (min_ev + 0.99 * (max_ev - min_ev)) + padding
+
         return (neutral_luminance, min_tonal_ev, max_tonal_ev)
 
 
