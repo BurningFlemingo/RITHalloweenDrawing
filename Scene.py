@@ -66,8 +66,6 @@ class Scene:
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         pre_pass_scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
-        msaa_hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
-        msaa_ldr_color: AttachmentHandle = self.render_graph.make_attachment(msaa_ldr_color_attachment_info)
         hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
         depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass)
@@ -328,26 +326,33 @@ class Scene:
             index: int = round(t * (n_bins - 1))
             bins[index] += 1
 
-        start: int = int(n_bins * 0.70)
-        end: int = int(n_bins * 0.98)
+        start: int = int(n_bins * 0.0)
+        end: int = int(n_bins * 1.0)
         acc: float = 0
+        n_samples: int = 0
         for i in range(start, end):
-            t: float = (i + 0.5) / n_bins           
+            n_samples += bins[i]
+            t: float = (i + 0.5) / n_bins
             ev: float = min_ev + t * (max_ev - min_ev)
             acc += ev
             
-        neutral_luminance: float = math.exp2(acc/(end-start))
-            
-        return (neutral_luminance, min_ev, max_ev)
+        neutral_luminance: float = math.exp2(acc/n_samples)
+        
+        # to be tweaked 
+        min_tonal_ev: float = min_ev
+        max_tonal_ev: float = min_ev
+        
+        return (neutral_luminance, min_tonal_ev, max_tonal_ev)
 
 
     def tonemap_pass(self, ctx: RenderCtx):
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
         neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
+        exposure_compensation: float = -1
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, min_ev, max_ev)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, min_ev, max_ev, exposure_compensation)
         )
 
     def resolve_pass(self, ctx: RenderCtx):

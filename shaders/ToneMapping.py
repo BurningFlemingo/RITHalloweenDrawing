@@ -25,6 +25,7 @@
 #
 # https://iolite-engine.com/blog_posts/minimal_agx_implementation
 
+from math import exp2
 from typing import NamedTuple
 
 from VectorMath import *
@@ -47,10 +48,9 @@ def agx_sigmoid_contrast_approx(x: Vec3):
          - 0.1718    * x      \
          + 0.002857
 
-def color_correction(val: Vec3) -> Vec3:
+def color_grading(val: Vec3) -> Vec3:
     # ASC CDL 
     
-    # normal
     offset: Vec3 = Vec3(0.0, 0.0, 0.0);
     slope: Vec3 = Vec3(1.0, 1.0, 1.0);
     power: Vec3 = Vec3(1.0, 1.0, 1.0);
@@ -76,7 +76,7 @@ def color_correction(val: Vec3) -> Vec3:
     rec_709_primaries: Vec3 = Vec3(0.2126, 0.7152, 0.0722)
     luminance: float = dot(val, rec_709_primaries)
 
-    return (sat * (val - luminance)) + luminance
+    return ((val - luminance) * sat) + luminance
 
     
 # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
@@ -112,7 +112,7 @@ def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
     )
     val = (val - min_ev) / (max_ev - min_ev)
     val = agx_sigmoid_contrast_approx(val)
-    val = color_correction(val)
+    val = color_grading(val)
 
     val = (agx_outset * Vec4(*val, 1.0)).xyz
     val = Vec3(
@@ -124,24 +124,21 @@ def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
 
 
 class TonemapFragmentShader:
-    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, min_ev: float, max_ev: float):
+    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, min_ev: float, max_ev: float, exposure_compensation: float):
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
-        
-        self.min_ev = min_ev + 0.02 * (max_ev - min_ev)
-        self.max_ev = min_ev + 0.98 * (max_ev - min_ev)
-        
-        key: float = (1.03 - 2/(math.log10(neutral_scene_luminance + 1) + 2)) / 2
-        
-        self.exposure = 0.18 / (neutral_scene_luminance)
 
-        if (self.exposure > 1):
-            self.max_ev += math.log2(self.exposure)
-        elif(self.exposure < 1 and self.exposure > 0):
-            self.min_ev += math.log2(self.exposure)
-            
-        print("exposure:", self.exposure, "key:", key)
-        
+        middle_gray: float = exp2(min_ev + 0.5 * (max_ev - min_ev))
+        key: float = middle_gray * math.exp2(exposure_compensation)
+        self.exposure = key / (neutral_scene_luminance)
+        ev: float = math.log2(self.exposure)
+
+        self.max_ev = max_ev
+        self.min_ev = min_ev
+
+        print("mid gray:", middle_gray, "key:", key, "exposure:", self.exposure, "min_ev:", self.min_ev, "max_ev:", self.max_ev)
+
+
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
         linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
