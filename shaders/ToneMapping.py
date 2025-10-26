@@ -148,16 +148,19 @@ class TonemapFragmentShader:
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
         
-        self.pivot = neutral_scene_luminance * math.exp2(exposure_compensation)
-
-        self.max_ev = max_ev
-        self.min_ev = min_ev
+        middle_gray_ev = min_ev + 0.5 * (max_ev - min_ev)
+        
+        self.pivot_ev = middle_gray_ev
+        self.exposure = math.exp2(self.pivot_ev + exposure_compensation) / neutral_scene_luminance
+        
+        self.min_ev = min_ev + math.log2(self.exposure)
+        self.max_ev = max_ev + math.log2(self.exposure)
 
 
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
-        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
+        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz * self.exposure
 
-        mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev, math.log2(self.pivot))
+        mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev, self.pivot_ev)
 
         return [Vec4(*mapped_color, 1.0)]

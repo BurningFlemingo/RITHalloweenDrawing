@@ -341,7 +341,7 @@ class Scene:
         neutral_luminance: float = math.exp2(neutral_ev)
         
         min_tonal_ev: float = (min_ev + 0.02 * (max_ev - min_ev))
-        max_tonal_ev: float = (min_ev + 0.98 * (max_ev - min_ev))
+        max_tonal_ev: float = max_ev 
 
         return (neutral_luminance, min_tonal_ev, max_tonal_ev)
 
@@ -353,7 +353,7 @@ class Scene:
         exposure_compensation: float = 0
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev, max_ev + 5)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev, max_ev + 2)
         )
 
     def resolve_pass(self, ctx: RenderCtx):
