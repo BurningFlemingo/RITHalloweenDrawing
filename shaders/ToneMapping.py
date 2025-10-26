@@ -62,8 +62,8 @@ def color_grading(val: Vec3) -> Vec3:
     # sat = 0.8;
 
     # punchy
-    # power: Vec3 = Vec3(1.35, 1.35, 1.35);
-    # sat: float = 1.4
+    # power = Vec3(1.35, 1.35, 1.35);
+    # sat = 1.4
     
     val = val * slope + offset
     val = Vec3(
@@ -112,7 +112,6 @@ def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
     )
     val = (val - min_ev) / (max_ev - min_ev)
     val = agx_sigmoid_contrast_approx(val)
-    val = color_grading(val)
 
     val = (agx_outset * Vec4(*val, 1.0)).xyz
     val = Vec3(
@@ -120,27 +119,28 @@ def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
         min(max(val.y, 0), 1), 
         min(max(val.z, 0), 1), 
     )
+    
+    val = color_grading(val)
     return val
 
 
 class TonemapFragmentShader:
-    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, min_ev: float, max_ev: float, exposure_compensation: float):
+    def __init__(self, color_attachment: Sampler2D, neutral_scene_luminance: float, exposure_compensation: float = 0, min_ev: float = -12.4739, max_ev: float = 4.0261):
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
-
+        
         self.pivot = math.exp2(min_ev + 0.5 * (max_ev - min_ev))
 
         key: float = self.pivot * math.exp2(exposure_compensation)
         self.exposure = key / (neutral_scene_luminance)
 
-        self.max_ev = max_ev + 2 ** self.pivot
-        self.min_ev = min_ev + 2 ** self.pivot
+        self.max_ev = max_ev
+        self.min_ev = min_ev
 
 
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
         linear_color: Vec3 = self.color_attachment.sample(*uv).xyz * self.exposure
-        linear_color = (linear_color - self.pivot) * self.exposure + self.pivot
 
         mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev)
 

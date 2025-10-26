@@ -61,7 +61,7 @@ class AttachmentHandle(NamedTuple):
 
 
 class RenderPass:
-    def __init__(self, viewport: Viewport, callback: Callable[[RenderCtx], None]):
+    def __init__(self, viewport: Viewport, callback: Callable[[RenderCtx], None], debug_name: str = ""):
         self.viewport = viewport
 
         self.input_attachments: list[AttachmentHandle] = []
@@ -73,6 +73,7 @@ class RenderPass:
                                 float | None] = {}  # [attachment.uid, ClearValue]
 
         self.render_callback: Callable[[RenderCtx], None] = callback
+        self.debug_name = debug_name
 
     def add_input_attachment(self, handle: AttachmentHandle):
         self.input_attachments.append(handle)
@@ -124,8 +125,8 @@ class RenderGraph:
         return handle
         
 
-    def make_pass(self, viewport: Viewport, callback: Callable[[RenderCtx], None]) -> RenderPass:
-        self.render_passes.append(RenderPass(viewport, callback))
+    def make_pass(self, viewport: Viewport, callback: Callable[[RenderCtx], None], debug_name: str = "") -> RenderPass:
+        self.render_passes.append(RenderPass(viewport, callback, debug_name))
         return self.render_passes[-1]
 
     def add_pass(self, render_pass: RenderPass):
@@ -159,7 +160,7 @@ class RenderGraph:
                     attachment.is_allocated = True
 
     def execute(self):
-        for render_pass in self.render_passes:
+        for i, render_pass in enumerate(self.render_passes):
             input_attachments: list[Buffer] = []
             color_output_attachments: list[Buffer] = []
             depth_attachment: Buffer | None = None
@@ -215,6 +216,10 @@ class RenderGraph:
             )
 
             render_pass.render_callback(ctx)
+            if (render_pass.debug_name == ""):
+                print("finished render pass", i)
+            else: 
+                print("finished", render_pass.debug_name)
 
 
 def make_buffer(info: AttachmentInfo) -> Buffer:

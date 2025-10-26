@@ -92,7 +92,7 @@ class SSAOFragmentShader:
         radius: float = 0.5
         occlusion: float = 0
         max_bias: float = 0.0005
-        min_bias: float = 0.00004
+        min_bias: float = 0.0001
         frag_dir: Vec3 = -1 * frag_pos
         bias: float = max(
             max_bias * (1 - dot(normal, frag_dir)), min_bias)
