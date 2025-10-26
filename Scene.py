@@ -340,8 +340,8 @@ class Scene:
         neutral_ev: float = acc/n_samples
         neutral_luminance: float = math.exp2(neutral_ev)
         
-        min_tonal_ev: float = (min_ev + 0.10 * (max_ev - min_ev))
-        max_tonal_ev: float = (min_ev + 0.90 * (max_ev - min_ev))
+        min_tonal_ev: float = (min_ev + 0.02 * (max_ev - min_ev))
+        max_tonal_ev: float = (min_ev + 0.98 * (max_ev - min_ev))
 
         return (neutral_luminance, min_tonal_ev, max_tonal_ev)
 
@@ -350,10 +350,10 @@ class Scene:
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
         neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
-        exposure_compensation: float = -2
+        exposure_compensation: float = 0
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev - 4, max_ev)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev, max_ev + 5)
         )
 
     def resolve_pass(self, ctx: RenderCtx):

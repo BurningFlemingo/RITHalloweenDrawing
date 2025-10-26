@@ -80,7 +80,7 @@ def color_grading(val: Vec3) -> Vec3:
 
     
 # from https://iolite-engine.com/blog_posts/minimal_agx_implementation
-def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
+def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261, pivot_ev: float = 0) -> Vec3:
     agx_inset: Mat4 = Mat4(
         Vec4(0.842479062253094, 0.0423282422610123, 0.0423756549057051, 0.0),
         Vec4(0.0784335999999992,  0.878468636469772,  0.0784336, 0.0),
@@ -110,7 +110,26 @@ def agx(val: Vec3, min_ev: float = -12.4739, max_ev: float = 4.0261) -> Vec3:
         min(math.log2(val.y), max_ev),
         min(math.log2(val.z), max_ev)
     )
-    val = (val - min_ev) / (max_ev - min_ev)
+    relative_x: float = val.x
+    relative_y: float = val.y
+    relative_z: float = val.z
+    if (relative_x >= pivot_ev):
+        relative_x = 0.5 + ((relative_x - pivot_ev) / (max_ev - pivot_ev))
+    else:
+        relative_x = 0.5 * ((relative_x - min_ev) / (pivot_ev - min_ev))
+
+    if (relative_y > pivot_ev):
+        relative_y = 0.5 + ((relative_y - pivot_ev) / (max_ev - pivot_ev))
+    else:
+        relative_y = 0.5 * ((relative_y - min_ev) / (pivot_ev - min_ev))
+
+    if (relative_z >= pivot_ev):
+        relative_z = 0.5 + ((relative_z - pivot_ev) / (max_ev - pivot_ev))
+    else:
+        relative_z = 0.5 * ((relative_z - min_ev) / (pivot_ev - min_ev))
+
+    val = Vec3(relative_x, relative_y, relative_z)
+    
     val = agx_sigmoid_contrast_approx(val)
 
     val = (agx_outset * Vec4(*val, 1.0)).xyz
@@ -129,10 +148,7 @@ class TonemapFragmentShader:
         print("neutral_luminance:", neutral_scene_luminance)
         self.color_attachment = color_attachment
         
-        self.pivot = math.exp2(min_ev + 0.5 * (max_ev - min_ev))
-
-        key: float = self.pivot * math.exp2(exposure_compensation)
-        self.exposure = key / (neutral_scene_luminance)
+        self.pivot = neutral_scene_luminance * math.exp2(exposure_compensation)
 
         self.max_ev = max_ev
         self.min_ev = min_ev
@@ -140,8 +156,8 @@ class TonemapFragmentShader:
 
     def __call__(self, attributes: QuadVertexShader.OutAttributes) -> list[Vec4]:
         uv: Vec2 = attributes.tex_uv
-        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz * self.exposure
+        linear_color: Vec3 = self.color_attachment.sample(*uv).xyz
 
-        mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev)
+        mapped_color: Vec3 = agx(linear_color, self.min_ev, self.max_ev, math.log2(self.pivot))
 
         return [Vec4(*mapped_color, 1.0)]
