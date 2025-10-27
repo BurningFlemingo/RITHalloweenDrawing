@@ -138,7 +138,6 @@ class PhongFragmentShader:
         for light in self.spot_lights:
             frag_color += calc_spot_light_contribution(
                 light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
-        # frag_color += skybox_frag_color
         
         # bloom_color: Vec3 = Vec3(0, 0, 0)
         # if (brightness > 1.0):

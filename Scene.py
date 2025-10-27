@@ -13,6 +13,7 @@ from Cubemap import *
 from Rendergraph import *
 
 
+from shaders.ChromaticAberration import ChromaticAberrationFragmentShader
 from shaders.DepthPrePass import DepthPrePassVertexShader
 from shaders.PhongLighting import *
 from shaders.ShadowPass import *
@@ -22,6 +23,7 @@ from shaders.GaussianBlur import *
 from shaders.Skybox import *
 from shaders.DepthPrePass import *
 from shaders.SSAOPass import *
+from shaders.ChromaticAberration import *
 
 
 @dataclass
@@ -66,7 +68,8 @@ class Scene:
         scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         pre_pass_scene_depth_buffer: AttachmentHandle = self.render_graph.make_attachment(msaa_depth_attachment_info)
         msaa_hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(msaa_hdr_color_attachment_info)
-        hdr_color: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        hdr_color_1: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
+        hdr_color_2: AttachmentHandle = self.render_graph.make_attachment(hdr_color_attachment_info)
 
         depth_pre_pass = self.render_graph.make_pass(viewport, self.depth_pre_pass, "depth_pass")
         depth_pre_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
@@ -74,7 +77,7 @@ class Scene:
         ssao_pass = self.render_graph.make_pass(viewport, self.ssao_pass, "ssao_pass")
         ssao_pass.set_depth_attachment(pre_pass_scene_depth_buffer)
         ssao_pass.add_input_attachment(pre_pass_scene_depth_buffer)
-        ssao_pass.add_color_output(hdr_color)
+        ssao_pass.add_color_output(hdr_color_1)
         
         shadow_pass = self.render_graph.make_pass(shadow_viewport, self.shadow_pass, "shadow_pass")
         shadow_pass.set_depth_attachment(shadow_map)
@@ -82,8 +85,10 @@ class Scene:
         light_pass = self.render_graph.make_pass(viewport, self.light_pass, "light_pass")
         light_pass.set_depth_attachment(scene_depth_buffer)
         light_pass.add_input_attachment(shadow_map)
-        light_pass.add_input_attachment(hdr_color)
+        light_pass.add_input_attachment(hdr_color_1)
         light_pass.add_color_output(msaa_hdr_color_1)
+
+
 
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass, "skybox_pass")
         # skybox_pass.add_color_output(msaa_hdr_color_1)
@@ -91,10 +96,14 @@ class Scene:
 
         resolve_pass = self.render_graph.make_pass(viewport, self.resolve_pass, "resolve_pass")
         resolve_pass.add_input_attachment(msaa_hdr_color_1)
-        resolve_pass.add_color_output(hdr_color)
+        resolve_pass.add_color_output(hdr_color_1)
+
+        chromatic_aberration_pass = self.render_graph.make_pass(viewport, self.chromatic_aberration_pass, "chrom_pass")
+        chromatic_aberration_pass.add_input_attachment(hdr_color_1)
+        chromatic_aberration_pass.add_color_output(hdr_color_2)
 
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass, "tonemap_pass")
-        tonemap_pass.add_input_attachment(hdr_color)
+        tonemap_pass.add_input_attachment(hdr_color_2)
         tonemap_pass.add_color_output(backbuffer)
 
         self.render_graph.compile()
@@ -290,6 +299,14 @@ class Scene:
                     vertex_offset=0
                 )
 
+    def chromatic_aberration_pass(self, ctx: RenderCtx):
+        hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
+        
+        self.post_process_pass(
+            ctx,
+            ChromaticAberrationFragmentShader(hdr_attachment)
+        )
+        
     def calc_neutral_luminance(self, hdr_attachment: Sampler2D) -> tuple[float, float, float]:
         assert hdr_attachment.buffers[0].n_samples_per_axis == 1
         
@@ -350,10 +367,10 @@ class Scene:
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
         neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
-        exposure_compensation: float = 0
+        exposure_compensation: float = 4
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev, max_ev + 2)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev + 5, max_ev + 3)
         )
 
     def resolve_pass(self, ctx: RenderCtx):
