@@ -37,11 +37,12 @@ class AttachmentInfo:
     color_space: ColorSpace = ColorSpace.LINEAR
 
     is_transient: bool = True
+    n_buffers: int = 1
 
 
 @dataclass
 class Attachment:
-    buffer: Buffer
+    buffers: list[Buffer]
     size_mode: SizeMode
     
     is_transient: bool
@@ -104,8 +105,11 @@ class RenderGraph:
             attachment_type = AttachmentType.DEPTH
 
         handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
-        buffer: Buffer = Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space)
-        attachment = Attachment(buffer=buffer, size_mode=info.size_mode, is_transient=info.is_transient, is_allocated=False)
+        buffers: list[Buffer] = []
+        for _ in range(0, info.n_buffers):
+            buffers.append(Buffer(data = [], width=info.width, height=info.height, n_samples_per_axis=info.msaa, format=info.format, color_space=info.color_space))
+            
+        attachment = Attachment(buffers=buffers, size_mode=info.size_mode, is_transient=info.is_transient, is_allocated=False)
         
         self.attachments.append(attachment)
         
@@ -118,7 +122,7 @@ class RenderGraph:
             attachment_type = AttachmentType.DEPTH
             
         handle = AttachmentHandle(uid=index, type=attachment_type, debug_name=debug_name)
-        attachment = Attachment(buffer=buffer, size_mode=SizeMode.ABSOLUTE, is_transient=True, is_allocated=True)
+        attachment = Attachment(buffers=[buffer], size_mode=SizeMode.ABSOLUTE, is_transient=True, is_allocated=True)
             
         self.attachments.append(attachment)
 
@@ -148,15 +152,19 @@ class RenderGraph:
                 attachment: Attachment = self.attachments[handle.uid]
                 if (attachment.is_allocated == False):
                     if (attachment.size_mode == SizeMode.VIEWPORT):
-                        attachment.buffer = Buffer(
-                            data=attachment.buffer.data, 
-                            width=render_pass.viewport.width, 
-                            height=render_pass.viewport.height, 
-                            n_samples_per_axis=attachment.buffer.n_samples_per_axis,
-                            format=attachment.buffer.format,
-                            color_space=attachment.buffer.color_space
-                        )
-                    allocate_buffer(attachment.buffer)
+                        for i in range(0, len(attachment.buffers)):
+                            buffer: Buffer = attachment.buffers[i]
+                            
+                            attachment.buffers[i] = Buffer(
+                                data=buffer.data, 
+                                width=render_pass.viewport.width, 
+                                height=render_pass.viewport.height, 
+                                n_samples_per_axis=buffer.n_samples_per_axis,
+                                format=buffer.format,
+                                color_space=buffer.color_space
+                            )
+                            
+                            allocate_buffer(attachment.buffers[i])
                     attachment.is_allocated = True
 
     def execute(self):
@@ -169,7 +177,7 @@ class RenderGraph:
 
             if (render_pass.depth_attachment != None):
                 uid: int = render_pass.depth_attachment.uid
-                depth_attachment = self.attachments[uid].buffer
+                depth_attachment = self.attachments[uid].buffers[0]
                 msaa = depth_attachment.n_samples_per_axis
             
                 
@@ -178,13 +186,13 @@ class RenderGraph:
                 f"{handle.uid}:{handle.debug_name} attachment not found in graph"
 
                 attachment: Attachment = self.attachments[handle.uid]
-                assert attachment.buffer != None
+                assert attachment.buffers[0] != None
                 
-                buffer: Buffer = attachment.buffer
+                buffer: Buffer = attachment.buffers[0]
                 
                 clear_value: Vec4 | float | None = render_pass.clear_values[handle]
                 if (clear_value != None):
-                    clear_buffer(attachment.buffer, clear_value)
+                    clear_buffer(attachment.buffers[0], clear_value)
 
                 msaa = max(msaa, buffer.n_samples_per_axis)
                 
@@ -195,9 +203,9 @@ class RenderGraph:
                 f"{handle.uid}:{handle.debug_name} attachment not found in graph"
 
                 attachment: Attachment = self.attachments[handle.uid]
-                assert attachment.buffer != None
+                assert attachment.buffers != None
 
-                buffer: Buffer = attachment.buffer
+                buffer: Buffer = attachment.buffers[0]
                 input_attachments.append(buffer)
 
             viewport: Viewport = render_pass.viewport

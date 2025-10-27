@@ -88,8 +88,6 @@ class Scene:
         light_pass.add_input_attachment(hdr_color_1)
         light_pass.add_color_output(msaa_hdr_color_1)
 
-
-
         # skybox_pass = self.render_graph.make_pass(viewport, self.skybox_pass, "skybox_pass")
         # skybox_pass.add_color_output(msaa_hdr_color_1)
         # skybox_pass.set_depth_attachment(scene_depth_buffer)
@@ -124,6 +122,8 @@ class Scene:
         self.point_lights: list[PointLight] = []
         self.directional_lights: list[DirectionalLight] = []
         self.spot_lights: list[SpotLight] = []
+        
+        self.castable_light: PointLight | SpotLight | DirectionalLight | None = None
 
         self.skybox = self.asset_manager.load_cubemap("assets\\cave\\")
         self.turtle_is_setup: bool = False
@@ -162,6 +162,11 @@ class Scene:
             self.directional_lights.append(light)
         if (type(light) is SpotLight):
             self.spot_lights.append(light)
+
+    def set_castable_light(self, light):
+        if (type(light) is SpotLight):
+            self.castable_light = light
+            
             light_projection_mat: Mat4 = make_perspective_matrix(
                 90,
                 self.shadow_viewport.width / self.shadow_viewport.height,
@@ -171,6 +176,7 @@ class Scene:
                 light.pos, light.pos + light.dir, Vec3(0, 1, 0))
 
             self.light_space_matrix = light_projection_mat * light_view_mat
+
 
     def set_camera(self, cam: Camera):
         ar: float = self.viewport.width / self.viewport.height
@@ -285,6 +291,7 @@ class Scene:
                     point_lights=self.point_lights,
                     directional_lights=self.directional_lights,
                     spot_lights=self.spot_lights,
+                    castable_light=self.castable_light,
                     occlusion_map=occlusion_map,
                     shadow_map=shadow_map,
                     skybox=self.skybox, 
@@ -367,10 +374,10 @@ class Scene:
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
         neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
-        exposure_compensation: float = 4
+        exposure_compensation: float = -2
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev + 5, max_ev + 3)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev + 1, max_ev - 4)
         )
 
     def resolve_pass(self, ctx: RenderCtx):

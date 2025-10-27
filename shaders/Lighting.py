@@ -4,22 +4,24 @@ from RenderTypes import *
 from AssetManager import *
 
 
-def calc_point_light_contribution(light: PointLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3) -> Vec3:
+def calc_point_light_contribution(light: PointLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, shadow_scalar: float = 1.0, occlusion: float = 1.0) -> Vec3:
     light_dir: Vec3 = light.pos - fragment_pos
     light_distance: float = light_dir.magnitude()
     light_dir = normalize(light_dir)
 
     attenuation: float = light.intensity / (1 + light_distance ** 2)
-    return calc_phong_lighting(material, tex_uv, light.color, light_dir, view_dir, normal, attenuation, 1.0)
+    intensity: float = light.intensity * shadow_scalar
+    return calc_phong_lighting(material, tex_uv, light.color, light_dir, view_dir, normal, attenuation, intensity, occlusion, light.intensity)
 
 
-def calc_directional_light_contribution(light: DirectionalLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3) -> Vec3:
+def calc_directional_light_contribution(light: DirectionalLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, shadow_scalar: float = 1.0, occlusion: float = 1.0) -> Vec3:
     light_dir = normalize(light.dir * -1)
 
-    return calc_phong_lighting(material, tex_uv, light.color, light_dir, view_dir, normal, 1.0, light.intensity)
+    intensity: float = light.intensity * shadow_scalar
+    return calc_phong_lighting(material, tex_uv, light.color, light_dir, view_dir, normal, 1.0, intensity, occlusion, light.intensity)
 
 
-def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, shadow_scalar: float, occlusion: float) -> Vec3:
+def calc_spot_light_contribution(light: SpotLight, fragment_pos: Vec3, normal: Vec3, tex_uv: Vec2, material: Material, view_dir: Vec3, shadow_scalar: float = 1.0, occlusion: float = 1.0) -> Vec3:
     spot_dir = normalize(light.dir)
     light_dir = light.pos - fragment_pos
     light_distance = light_dir.magnitude()

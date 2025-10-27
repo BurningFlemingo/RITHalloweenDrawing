@@ -67,11 +67,12 @@ class PhongVertexShader:
 
 
 class PhongFragmentShader:
-    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], occlusion_map: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D, projection_matrix: Mat4):
+    def __init__(self, material: Material, point_lights: list[PointLight], directional_lights: list[DirectionalLight], spot_lights: list[SpotLight], castable_light: PointLight | SpotLight | DirectionalLight | None, occlusion_map: Sampler2D, shadow_map: Sampler2D, skybox: Sampler3D, projection_matrix: Mat4):
         self.material = material
         self.point_lights = point_lights
         self.directional_lights = directional_lights
         self.spot_lights = spot_lights
+        self.castable_light = castable_light
         self.occlusion_map = occlusion_map
         self.shadow_map = shadow_map
         self.skybox = skybox
@@ -107,37 +108,54 @@ class PhongFragmentShader:
         occlusion_uv: Vec2 = (occlusion_ndc.xy / 2) + 0.5
         occlusion: float = occlusion_map.sample(*occlusion_uv).x
 
-        shadow_map_uv: Vec2 = Vec2(
-            (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
-
-        max_bias: float = 0.002
-        min_bias: float = 0.00001
-        spot_light_dir: Vec3 = self.spot_lights[0].pos - pos
-        bias: float = max(
-            max_bias * (1 - dot(normal, spot_light_dir)), min_bias)
-
-        shadow_scalar: float = 0.0
-        for y in range(-1, 2):
-            for x in range(-1, 2):
-                u: float = shadow_map_uv.x + x / shadow_map.get_size().width
-                v: float = shadow_map_uv.y + y / shadow_map.get_size().height
-                closest_depth: float = shadow_map.sample(
-                    u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
-                if (current_depth <= 1.0):
-                    shadow_scalar += 1 if (current_depth -
-                                           bias) > closest_depth else 0
-        shadow_scalar = 1 - (shadow_scalar / 9)
-
         frag_color: Vec3 = Vec3(0.0, 0.0, 0.0)
         for light in self.point_lights:
             frag_color += calc_point_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir)
+                light, pos, normal, tex_uv, material, view_dir, 1.0, occlusion)
         for light in self.directional_lights:
             frag_color += calc_directional_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir)
+                light, pos, normal, tex_uv, material, view_dir, 1.0, occlusion)
         for light in self.spot_lights:
             frag_color += calc_spot_light_contribution(
-                light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
+                light, pos, normal, tex_uv, material, view_dir, 1.0, occlusion)
+        
+        shadow_map_uv: Vec2 = Vec2(
+            (frag_light_space_pos.x / 2) + 0.5, (frag_light_space_pos.y / 2) + 0.5)
+        
+        
+        castable_dir: Vec3 = Vec3()
+        if (isinstance(self.castable_light, PointLight) or isinstance(self.castable_light, SpotLight)):
+            castable_dir = self.castable_light.pos - pos
+        elif(isinstance(self.castable_light, DirectionalLight)):
+            castable_dir = self.castable_light.dir
+        
+        shadow_scalar: float = 1.0
+        if (self.castable_light is not None):
+            max_bias: float = 0.002
+            min_bias: float = 0.00001
+            bias: float = max(
+                max_bias * (1 - dot(normal, castable_dir)), min_bias)
+
+            for y in range(-1, 2):
+                for x in range(-1, 2):
+                    u: float = shadow_map_uv.x + x / shadow_map.get_size().width
+                    v: float = shadow_map_uv.y + y / shadow_map.get_size().height
+                    closest_depth: float = shadow_map.sample(
+                        u, v, WrappingMode.CLAMP_TO_BORDER, float("inf")).x
+                    if (current_depth <= 1.0):
+                        shadow_scalar += 1 if (current_depth -
+                                               bias) > closest_depth else 0
+            shadow_scalar = 1 - (shadow_scalar / 9)
+
+        if (isinstance(self.castable_light, PointLight)):
+            frag_color += calc_point_light_contribution(
+                self.castable_light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
+        elif (isinstance(self.castable_light, DirectionalLight)):
+            frag_color += calc_directional_light_contribution(
+                self.castable_light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
+        elif (isinstance(self.castable_light, SpotLight)):
+            frag_color += calc_spot_light_contribution(
+                self.castable_light, pos, normal, tex_uv, material, view_dir, shadow_scalar, occlusion)
         
         # bloom_color: Vec3 = Vec3(0, 0, 0)
         # if (brightness > 1.0):

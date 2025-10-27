@@ -28,9 +28,6 @@ class MeshAsset:
 
 
 def load_bmp(path: str, src_color_space: ColorSpace, dst_color_space: ColorSpace) -> Buffer:
-    """
-        Automatically loads the buffer gamma corrected if is_srgb is True.
-    """
     with open(path, 'rb') as bmp:
         loaded_bmp: bytes = bmp.read()
 
