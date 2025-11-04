@@ -26,7 +26,7 @@ class Sampler2D:
     duvdx: Vec2 = Vec2()
     duvdy: Vec2 = Vec2()
 
-    anisotropic_filtering: bool = False
+    anisotropic_filtering: bool = True
     max_anisotropy: int = 16
 
     def get_size(self) -> SizeDimensions:

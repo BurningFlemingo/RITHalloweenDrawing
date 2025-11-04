@@ -96,12 +96,8 @@ class Scene:
         resolve_pass.add_input_attachment(msaa_hdr_color_1)
         resolve_pass.add_color_output(hdr_color_1)
 
-        chromatic_aberration_pass = self.render_graph.make_pass(viewport, self.chromatic_aberration_pass, "chrom_pass")
-        chromatic_aberration_pass.add_input_attachment(hdr_color_1)
-        chromatic_aberration_pass.add_color_output(hdr_color_2)
-
         tonemap_pass = self.render_graph.make_pass(viewport, self.tonemap_pass, "tonemap_pass")
-        tonemap_pass.add_input_attachment(hdr_color_2)
+        tonemap_pass.add_input_attachment(hdr_color_1)
         tonemap_pass.add_color_output(backbuffer)
 
         self.render_graph.compile()
@@ -374,10 +370,10 @@ class Scene:
         hdr_attachment: Sampler2D = Sampler2D([ctx.input_attachments[0]])
         neutral_luminance, min_ev, max_ev = self.calc_neutral_luminance(hdr_attachment)
 
-        exposure_compensation: float = -2
+        exposure_compensation: float = 0
         self.post_process_pass(
             ctx,
-            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev + 1, max_ev - 4)
+            TonemapFragmentShader(hdr_attachment, neutral_luminance, exposure_compensation, min_ev -3, max_ev + 3)
         )
 
     def resolve_pass(self, ctx: RenderCtx):
